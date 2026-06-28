@@ -16,12 +16,60 @@ const BASE_HOSTS = {
   "intranet.lab.example": "192.168.10.80"
 };
 
+const TOPOLOGY_ICONS = {
+  linux: "assets/images/icon-linux-terminal.png",
+  switch: "assets/images/icon-network-switch.png",
+  gateway: "assets/images/icon-router-gateway.png",
+  dns: "assets/images/icon-dns-server.png",
+  internet: "assets/images/icon-internet-server.png"
+};
+
 const SCENARIOS = [
   {
     id: "basic",
     title: "基本操作",
     level: "導入",
     description: "NetworkManagerの状態、設定ファイル、通信確認の読み方を順番に体験します。",
+    guide: {
+      summary: "正常な構成を見ながら、NetworkManagerのプロファイル、実際に反映された状態、通信確認の対応をつかみます。",
+      steps: [
+        {
+          id: "basic-check-profile",
+          phase: "確認",
+          purpose: "NICとconnection profileが有効かを確認する",
+          commands: ["nmcli device status", "nmcli connection show ens160"],
+          expected: "ens160 が connected で、IP、GW、DNS がプロファイルに設定されていることを見る",
+          isDone: state =>
+            state.commands.some(commandStarts("nmcli device status")) &&
+            state.commands.some(commandStarts("nmcli connection show ens160"))
+        },
+        {
+          id: "basic-check-files",
+          phase: "設定確認",
+          purpose: "nmcliで見た設定が、どの設定ファイルに相当するか確認する",
+          commands: [
+            "cat /etc/NetworkManager/system-connections/ens160.nmconnection",
+            "cat /etc/resolv.conf"
+          ],
+          expected: "nmconnectionのaddress1/dnsと、resolv.confのnameserverを対応づける",
+          isDone: state =>
+            state.commands.some(commandIncludes("/etc/NetworkManager/system-connections/ens160.nmconnection")) &&
+            state.commands.some(commandIncludes("/etc/resolv.conf"))
+        },
+        {
+          id: "basic-verify-network",
+          phase: "検証",
+          purpose: "IPアドレス、経路、疎通、名前解決を順番に確認する",
+          commands: ["ip addr", "ip route", "ping 192.168.10.1", "dig repo.lab.example"],
+          expected: "Active IP、default route、ゲートウェイへのping成功、DNS応答を確認する",
+          isDone: state =>
+            state.commands.some(commandStarts("ip addr")) &&
+            state.commands.some(commandStarts("ip route")) &&
+            state.commands.some(commandStarts("ping 192.168.10.1")) &&
+            state.commands.some(commandStarts("dig repo.lab.example"))
+        }
+      ]
+    },
     start: {
       deviceState: "connected",
       profile: {
@@ -61,6 +109,40 @@ const SCENARIOS = [
     title: "演習1: connection未起動",
     level: "初級",
     description: "NICは管理対象ですが、connectionが未起動です。状態確認から起動までを行います。",
+    guide: {
+      summary: "まず未接続であることを確認し、connectionを起動して、IPと経路が反映されたことを検証します。",
+      steps: [
+        {
+          id: "link-confirm-down",
+          phase: "確認",
+          purpose: "NICとconnectionがまだ有効になっていないことを確認する",
+          commands: ["nmcli device status", "nmcli connection show --active"],
+          expected: "ens160 が disconnected、またはactive connection一覧に出ないことを見る",
+          isDone: state =>
+            state.commands.some(commandStarts("nmcli device status")) &&
+            state.commands.some(commandStarts("nmcli connection show --active"))
+        },
+        {
+          id: "link-activate",
+          phase: "設定反映",
+          purpose: "保存済みプロファイルをランタイムへ反映して接続を有効化する",
+          commands: ["nmcli connection up ens160"],
+          expected: "Connection successfully activated と表示され、IP/GW/DNSが反映される",
+          isDone: state => state.runtime.active
+        },
+        {
+          id: "link-verify",
+          phase: "検証",
+          purpose: "IPアドレス、経路、ゲートウェイ疎通を確認する",
+          commands: ["ip addr", "ip route", "ping 192.168.10.1"],
+          expected: "ens160にIPが付き、default routeが表示され、pingが0% packet lossになる",
+          isDone: state =>
+            state.commands.some(commandStarts("ip addr")) &&
+            state.commands.some(commandStarts("ip route")) &&
+            state.successes.has("ping:192.168.10.1")
+        }
+      ]
+    },
     start: {
       deviceState: "disconnected",
       profile: {
@@ -97,6 +179,45 @@ const SCENARIOS = [
     title: "演習2: DNS設定不良",
     level: "中級",
     description: "IP通信は可能ですが、DNSサーバーの設定が誤っています。resolv.confとdigで切り分けます。",
+    guide: {
+      summary: "IP通信は成功するのに名前解決だけ失敗する状況を作り、DNS設定を直してから再反映します。",
+      steps: [
+        {
+          id: "dns-isolate",
+          phase: "切り分け",
+          purpose: "IP疎通とDNS問い合わせの結果を比較する",
+          commands: ["ping 192.168.10.1", "dig repo.lab.example"],
+          expected: "ゲートウェイへのpingは成功し、digはDNSサーバーへ到達できず失敗する",
+          isDone: state => state.successes.has("ping:192.168.10.1") && state.failures.has("dns")
+        },
+        {
+          id: "dns-check-file",
+          phase: "設定確認",
+          purpose: "現在反映されているDNSサーバーをresolv.confで確認する",
+          commands: ["cat /etc/resolv.conf"],
+          expected: "nameserver が誤った 203.0.113.53 になっていることを見る",
+          isDone: state => state.commands.some(commandIncludes("/etc/resolv.conf"))
+        },
+        {
+          id: "dns-fix-profile",
+          phase: "変更",
+          purpose: "NetworkManagerのプロファイル上のDNSサーバーを正しい値に変更する",
+          commands: ["nmcli connection modify ens160 ipv4.dns 192.168.10.53"],
+          expected: "successfully modified と表示されるが、この時点ではまだランタイム未反映",
+          isDone: state => state.profile.dns === DNS_SERVER
+        },
+        {
+          id: "dns-apply-verify",
+          phase: "反映と検証",
+          purpose: "connection upで変更を反映し、名前解決が直ったことを確認する",
+          commands: ["nmcli connection up ens160", "nslookup repo.lab.example"],
+          expected: "反映後のDNSが192.168.10.53になり、repo.lab.exampleのAddressが返る",
+          isDone: state =>
+            state.runtime.dns === DNS_SERVER &&
+            state.successes.has("dns:repo.lab.example")
+        }
+      ]
+    },
     start: {
       deviceState: "connected",
       profile: {
@@ -131,6 +252,50 @@ const SCENARIOS = [
     title: "演習3: 経路と名前解決順序",
     level: "上級",
     description: "DNSは正しく見えますが、デフォルトゲートウェイとhosts優先の影響が混ざっています。",
+    guide: {
+      summary: "経路表と名前解決の参照順を分けて確認し、digとpingの見え方が違う理由を説明できる状態にします。",
+      steps: [
+        {
+          id: "route-check",
+          phase: "経路確認",
+          purpose: "外部ネットワークへ出るdefault gatewayが正しいか確認する",
+          commands: ["ip route", "netstat -rn"],
+          expected: "default gateway が誤った 192.168.10.254 になっていることを見る",
+          isDone: state => state.commands.some(commandStarts("ip route")) || state.commands.some(commandStarts("netstat -rn"))
+        },
+        {
+          id: "name-compare",
+          phase: "名前解決確認",
+          purpose: "digとpingでrepo.lab.exampleの解決先が違うことを確認する",
+          commands: ["dig repo.lab.example", "ping repo.lab.example"],
+          expected: "digはDNSの192.168.20.20を返し、pingはhostsの172.16.5.20を使う",
+          isDone: state =>
+            state.commands.some(commandStarts("dig repo.lab.example")) &&
+            state.commands.some(commandStarts("ping repo.lab.example"))
+        },
+        {
+          id: "name-files",
+          phase: "設定確認",
+          purpose: "名前解決順序と固定ホスト定義をファイルで確認する",
+          commands: ["cat /etc/nsswitch.conf", "cat /etc/hosts"],
+          expected: "hosts: files dns の順序と、repo.lab.example のhosts定義を確認する",
+          isDone: state =>
+            state.commands.some(commandIncludes("/etc/nsswitch.conf")) &&
+            state.commands.some(commandIncludes("/etc/hosts"))
+        },
+        {
+          id: "route-fix-apply",
+          phase: "変更と反映",
+          purpose: "default gatewayを正しい値に変更し、ランタイムへ反映する",
+          commands: [
+            "nmcli connection modify ens160 ipv4.gateway 192.168.10.1",
+            "nmcli connection up ens160"
+          ],
+          expected: "反映後のGWが192.168.10.1になり、外部宛先への経路が成立する",
+          isDone: state => state.runtime.gateway === GOOD_GATEWAY
+        }
+      ]
+    },
     start: {
       deviceState: "connected",
       profile: {
@@ -216,6 +381,123 @@ export function getScenarioDetails(stateOrId) {
   };
 }
 
+export function getExerciseGuide(stateOrId) {
+  const scenarioId = typeof stateOrId === "string" ? stateOrId : stateOrId.scenarioId;
+  const scenario = getScenario(scenarioId);
+  return {
+    scenarioId: scenario.id,
+    title: scenario.title,
+    summary: scenario.guide.summary,
+    steps: scenario.guide.steps.map(step => ({
+      id: step.id,
+      phase: step.phase,
+      purpose: step.purpose,
+      commands: [...step.commands],
+      expected: step.expected,
+      done: typeof stateOrId === "string" ? false : step.isDone(stateOrId)
+    }))
+  };
+}
+
+export function getTopologyDetails(state) {
+  const active = state.runtime.active;
+  const dirty = !profileMatchesRuntime(state);
+  const gatewayOk = active && state.runtime.gateway === GOOD_GATEWAY;
+  const dnsOk = active && state.runtime.dns === DNS_SERVER;
+  const gatewayStatus = !active ? "down" : gatewayOk ? "ok" : "error";
+  const dnsStatus = !active ? "down" : dnsOk ? "ok" : "error";
+  const endpointStatus = !active ? "down" : gatewayOk ? "ok" : "error";
+  const linuxStatus = !active ? "down" : dirty ? "pending" : "ok";
+
+  return {
+    overallStatus: !active ? "down" : !gatewayOk || !dnsOk ? "attention" : dirty ? "pending" : "ok",
+    summary: topologySummary({ active, dirty, gatewayOk, dnsOk }),
+    nodes: [
+      {
+        id: "linux",
+        title: "Linux端末",
+        detail: `${state.hostname} / ${state.device.name}`,
+        metric: active ? state.runtime.address : state.profile.address || "IP未設定",
+        note: active ? "現在の通信に使う端末" : "connection upで通信を開始",
+        icon: TOPOLOGY_ICONS.linux,
+        status: linuxStatus,
+        statusLabel: statusLabel(linuxStatus)
+      },
+      {
+        id: "switch",
+        title: "スイッチ",
+        detail: "同一LAN",
+        metric: "192.168.10.0/24",
+        note: active ? "LAN内の中継点" : "端末側の接続待ち",
+        icon: TOPOLOGY_ICONS.switch,
+        status: active ? "ok" : "down",
+        statusLabel: statusLabel(active ? "ok" : "down")
+      },
+      {
+        id: "gateway",
+        title: "ルーター / GW",
+        detail: "default gateway",
+        metric: state.runtime.gateway || state.profile.gateway || "未反映",
+        note: gatewayOk ? "外部宛先への出口" : "正しいGWは192.168.10.1",
+        icon: TOPOLOGY_ICONS.gateway,
+        status: gatewayStatus,
+        statusLabel: statusLabel(gatewayStatus)
+      },
+      {
+        id: "dns",
+        title: "DNSサーバー",
+        detail: "名前解決",
+        metric: state.runtime.dns || state.profile.dns || "未反映",
+        note: dnsOk ? "DNS問い合わせ先" : "正しいDNSは192.168.10.53",
+        icon: TOPOLOGY_ICONS.dns,
+        status: dnsStatus,
+        statusLabel: statusLabel(dnsStatus)
+      },
+      {
+        id: "internet",
+        title: "インターネット",
+        detail: "repo.lab.example",
+        metric: DNS_RECORDS["repo.lab.example"],
+        note: gatewayOk ? "GW経由で到達" : "GW修正後に到達可能",
+        icon: TOPOLOGY_ICONS.internet,
+        status: endpointStatus,
+        statusLabel: statusLabel(endpointStatus)
+      }
+    ],
+    links: [
+      {
+        id: "linux-switch",
+        from: "linux",
+        to: "switch",
+        label: active ? "ens160 active" : "connection未起動",
+        status: active ? "ok" : "down"
+      },
+      {
+        id: "switch-gateway",
+        from: "switch",
+        to: "gateway",
+        label: gatewayOk ? "default route OK" : active ? "GW設定を確認" : "未接続",
+        status: gatewayStatus
+      },
+      {
+        id: "switch-dns",
+        from: "switch",
+        to: "dns",
+        label: dnsOk ? "DNS OK" : active ? "DNS参照先が違う" : "未接続",
+        status: dnsStatus
+      },
+      {
+        id: "gateway-internet",
+        from: "gateway",
+        to: "internet",
+        label: gatewayOk ? "外部宛先へ到達" : active ? "外部宛先に届かない" : "未接続",
+        status: endpointStatus
+      }
+    ],
+    notes: topologyNotes({ active, dirty, gatewayOk, dnsOk })
+  };
+}
+
 export function getStateSummary(state) {
   return [
     ["Device", `${state.device.name} (${state.device.state})`],
@@ -274,6 +556,42 @@ export function runCommand(state, input) {
   } catch (error) {
     return `エラー: ${error.message}\n`;
   }
+}
+
+function topologySummary({ active, dirty, gatewayOk, dnsOk }) {
+  if (!active) return "端末のconnectionが未起動です。nmcli connection up ens160で通信状態へ反映します。";
+  if (!dnsOk) return "IP通信はできますが、DNSサーバーの参照先が誤っています。ipv4.dnsを確認します。";
+  if (!gatewayOk) return "LAN内は見えますが、default gatewayが誤っているため外部宛先へ出られません。";
+  if (dirty) return "プロファイル変更は保存済みですが、現在の通信にはまだ反映されていません。";
+  return "端末、LAN、GW、DNS、外部宛先までの基本経路が成立しています。";
+}
+
+function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
+  const notes = [];
+  if (!active) {
+    notes.push("nmcli device status と nmcli connection show --active で未起動を確認します。");
+  }
+  if (active && !dnsOk) {
+    notes.push("ping 192.168.10.1 が成功して dig が失敗する場合は、IP経路ではなくDNS設定を疑います。");
+  }
+  if (active && !gatewayOk) {
+    notes.push("ip route または netstat -rn で default gateway の値を確認します。");
+  }
+  if (dirty) {
+    notes.push("nmcli connection modify はプロファイル変更です。通信へ反映するには connection up が必要です。");
+  }
+  if (notes.length === 0) {
+    notes.push("確認、変更、反映、検証の順で見ると、どこで通信が止まるかを切り分けやすくなります。");
+  }
+  return notes;
+}
+
+function statusLabel(status) {
+  if (status === "ok") return "正常";
+  if (status === "pending") return "未反映";
+  if (status === "down") return "停止";
+  if (status === "error") return "要確認";
+  return "確認";
 }
 
 function getScenario(id) {

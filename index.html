@@ -27,13 +27,8 @@
           </section>
 
           <section class="panel-section">
-            <h2>学習の流れ</h2>
-            <ol class="lesson-steps">
-              <li><span>確認</span> <code>nmcli</code> と <code>ip</code> で現状を見る</li>
-              <li><span>変更</span> <code>nmcli connection modify</code> でプロファイルを変える</li>
-              <li><span>反映</span> <code>nmcli connection up</code> で通信状態へ反映する</li>
-              <li><span>検証</span> <code>ping</code>、<code>dig</code>、<code>nslookup</code>、<code>netstat</code> で切り分ける</li>
-            </ol>
+            <h2>この演習の進め方</h2>
+            <div id="exercise-guide" class="exercise-guide"></div>
           </section>
 
           <section class="panel-section">
@@ -45,22 +40,7 @@
         <aside class="state-panel" aria-label="状態と設定ファイル">
           <section class="panel-section topology-section">
             <h2>仮想ネットワーク</h2>
-            <div class="topology" aria-hidden="true">
-              <div class="node server">
-                <strong>alma-lab01</strong>
-                <span id="topology-address">192.168.10.50/24</span>
-              </div>
-              <div class="link"></div>
-              <div class="node gateway">
-                <strong>GW</strong>
-                <span>192.168.10.1</span>
-              </div>
-              <div class="link dns-link"></div>
-              <div class="node dns">
-                <strong>DNS</strong>
-                <span>192.168.10.53</span>
-              </div>
-            </div>
+            <div id="topology-map" class="topology-map" aria-live="polite"></div>
           </section>
 
           <section class="panel-section">

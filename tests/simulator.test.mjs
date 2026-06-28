@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   createInitialState,
+  getExerciseGuide,
+  getTopologyDetails,
   getVirtualFiles,
   runCommand
 } from "../assets/simulator.js";
@@ -43,6 +45,44 @@ function run(state, command) {
   assert.match(run(state, "ping repo.lab.example"), /172\.16\.5\.20/);
   assert.match(run(state, "nmcli connection modify ens160 ipv4.gateway 192.168.10.1"), /successfully modified/);
   assert.match(run(state, "nmcli connection up ens160"), /GW=192\.168\.10\.1/);
+}
+
+{
+  const guide = getExerciseGuide("dns-broken");
+  const commands = guide.steps.flatMap(step => step.commands);
+  assert.ok(commands.includes("nmcli connection modify ens160 ipv4.dns 192.168.10.53"));
+  assert.ok(commands.includes("nslookup repo.lab.example"));
+}
+
+{
+  const state = createInitialState("dns-broken");
+  let guide = getExerciseGuide(state);
+  assert.equal(guide.steps.find(step => step.id === "dns-isolate").done, false);
+  run(state, "ping 192.168.10.1");
+  run(state, "dig repo.lab.example");
+  guide = getExerciseGuide(state);
+  assert.equal(guide.steps.find(step => step.id === "dns-isolate").done, true);
+}
+
+{
+  const state = createInitialState("link-down");
+  const topology = getTopologyDetails(state);
+  assert.equal(topology.overallStatus, "down");
+  assert.equal(topology.links.find(link => link.id === "linux-switch").status, "down");
+}
+
+{
+  const state = createInitialState("dns-broken");
+  const topology = getTopologyDetails(state);
+  assert.equal(topology.overallStatus, "attention");
+  assert.equal(topology.nodes.find(node => node.id === "dns").status, "error");
+}
+
+{
+  const state = createInitialState("route-and-name");
+  const topology = getTopologyDetails(state);
+  assert.equal(topology.links.find(link => link.id === "gateway-internet").status, "error");
+  assert.match(topology.summary, /default gateway/);
 }
 
 console.log("simulator tests passed");
