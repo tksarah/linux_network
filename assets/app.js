@@ -8,9 +8,17 @@ import {
   runCommand
 } from "./simulator.js";
 
+const SCENARIO_KEY = "linux-network-lab-scenario";
+const TERMINAL_MODE_KEY = "linux-network-lab-terminal-mode";
+const terminalModes = new Set(["dock", "expanded", "minimized"]);
+
+const terminalPanel = document.querySelector("#terminal-panel");
 const terminalOutput = document.querySelector("#terminal-output");
 const terminalForm = document.querySelector("#terminal-form");
 const terminalInput = document.querySelector("#terminal-input");
+const terminalDockButton = document.querySelector("#terminal-dock");
+const terminalExpandButton = document.querySelector("#terminal-expand");
+const terminalMinimizeButton = document.querySelector("#terminal-minimize");
 const resetButton = document.querySelector("#reset-state");
 const helpButton = document.querySelector("#show-help");
 const scenarioList = document.querySelector("#scenario-list");
@@ -21,7 +29,7 @@ const fileExplainer = document.querySelector("#file-explainer");
 const goalList = document.querySelector("#goal-list");
 const scenarioLabel = document.querySelector("#active-scenario-label");
 const topologyAddress = document.querySelector("#topology-address");
-const welcomeText = document.querySelector("#welcome-template").innerHTML.trim();
+const welcomeText = document.querySelector("#welcome-template").content.textContent.trim();
 
 const chips = [
   "nmcli device status",
@@ -40,10 +48,12 @@ const chips = [
 
 let state = createInitialState(loadScenarioId());
 let selectedFile = "/etc/NetworkManager/system-connections/ens160.nmconnection";
+let terminalMode = loadTerminalMode();
 
 initialize();
 
 function initialize() {
+  applyTerminalMode(terminalMode, { focus: false });
   renderScenarios();
   renderChips();
   appendOutput(welcomeText);
@@ -56,16 +66,43 @@ function initialize() {
     execute(command);
   });
 
+  terminalInput.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      terminalForm.requestSubmit();
+    }
+  });
+
+  terminalDockButton.addEventListener("click", () => {
+    setTerminalMode("dock");
+  });
+
+  terminalExpandButton.addEventListener("click", () => {
+    setTerminalMode("expanded");
+  });
+
+  terminalMinimizeButton.addEventListener("click", () => {
+    setTerminalMode(terminalMode === "minimized" ? "dock" : "minimized");
+  });
+
+  terminalPanel.addEventListener("click", event => {
+    if (terminalMode === "minimized" && !event.target.closest("button")) {
+      setTerminalMode("dock");
+    }
+  });
+
   resetButton.addEventListener("click", () => {
     state = createInitialState(state.scenarioId);
     clearTerminal();
     appendOutput(welcomeText);
     renderAll();
-    terminalInput.focus();
+    focusTerminalInput();
   });
 
   helpButton.addEventListener("click", () => {
+    openTerminal();
     execute("help");
+    focusTerminalInput();
   });
 }
 
@@ -90,7 +127,7 @@ function renderAll() {
   const scenario = getScenarioDetails(state);
   scenarioLabel.textContent = scenario.title;
   topologyAddress.textContent = state.runtime.address || "未反映";
-  localStorage.setItem("linux-network-lab-scenario", state.scenarioId);
+  localStorage.setItem(SCENARIO_KEY, state.scenarioId);
   renderStateSummary();
   renderFiles();
   renderGoals();
@@ -113,7 +150,7 @@ function renderScenarios() {
       clearTerminal();
       appendOutput(`${scenario.title}を開始しました。\n${scenario.description}\n`);
       renderAll();
-      terminalInput.focus();
+      focusTerminalInput();
     });
     scenarioList.appendChild(button);
   }
@@ -127,7 +164,7 @@ function renderChips() {
     button.textContent = command;
     button.addEventListener("click", () => {
       terminalInput.value = command;
-      terminalInput.focus();
+      focusTerminalInput();
     });
     commandChips.appendChild(button);
   }
@@ -167,7 +204,7 @@ function renderFiles() {
   `;
   fileExplainer.querySelector("button").addEventListener("click", () => {
     terminalInput.value = `cat ${selectedFile}`;
-    terminalInput.focus();
+    focusTerminalInput();
   });
 }
 
@@ -207,6 +244,49 @@ function scrollTerminal() {
   terminalOutput.scrollTop = terminalOutput.scrollHeight;
 }
 
+function focusTerminalInput() {
+  openTerminal();
+  terminalInput.focus();
+}
+
+function openTerminal() {
+  if (terminalMode === "minimized") {
+    setTerminalMode("dock", { focus: false });
+  }
+}
+
+function setTerminalMode(mode, options = {}) {
+  terminalMode = terminalModes.has(mode) ? mode : "dock";
+  applyTerminalMode(terminalMode, options);
+  localStorage.setItem(TERMINAL_MODE_KEY, terminalMode);
+}
+
+function applyTerminalMode(mode, options = {}) {
+  document.body.dataset.terminalMode = mode;
+  terminalPanel.dataset.mode = mode;
+  updateTerminalControls(mode);
+  scrollTerminal();
+
+  if (options.focus !== false && mode !== "minimized") {
+    terminalInput.focus();
+  }
+}
+
+function updateTerminalControls(mode) {
+  terminalDockButton.disabled = mode === "dock";
+  terminalExpandButton.disabled = mode === "expanded";
+
+  const minimizeLabel = mode === "minimized" ? "ターミナルを開く" : "最小化";
+  terminalMinimizeButton.title = minimizeLabel;
+  terminalMinimizeButton.setAttribute("aria-label", minimizeLabel);
+  terminalMinimizeButton.querySelector("span").textContent = mode === "minimized" ? "+" : "-";
+}
+
 function loadScenarioId() {
-  return localStorage.getItem("linux-network-lab-scenario") || "basic";
+  return localStorage.getItem(SCENARIO_KEY) || "basic";
+}
+
+function loadTerminalMode() {
+  const saved = localStorage.getItem(TERMINAL_MODE_KEY);
+  return terminalModes.has(saved) ? saved : "dock";
 }

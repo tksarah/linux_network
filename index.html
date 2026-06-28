@@ -6,7 +6,7 @@
     <title>AlmaLinux Network Lab</title>
     <link rel="stylesheet" href="assets/styles.css">
   </head>
-  <body>
+  <body data-terminal-mode="dock">
     <div class="app-shell">
       <header class="app-header">
         <div>
@@ -29,10 +29,10 @@
           <section class="panel-section">
             <h2>学習の流れ</h2>
             <ol class="lesson-steps">
-              <li><span>確認</span> `nmcli` と `ip` で現状を見る</li>
-              <li><span>変更</span> `nmcli connection modify` でプロファイルを変える</li>
-              <li><span>反映</span> `nmcli connection up` で通信状態へ反映する</li>
-              <li><span>検証</span> `ping`、`dig`、`nslookup`、`netstat` で切り分ける</li>
+              <li><span>確認</span> <code>nmcli</code> と <code>ip</code> で現状を見る</li>
+              <li><span>変更</span> <code>nmcli connection modify</code> でプロファイルを変える</li>
+              <li><span>反映</span> <code>nmcli connection up</code> で通信状態へ反映する</li>
+              <li><span>検証</span> <code>ping</code>、<code>dig</code>、<code>nslookup</code>、<code>netstat</code> で切り分ける</li>
             </ol>
           </section>
 
@@ -41,21 +41,6 @@
             <div id="command-chips" class="command-chips"></div>
           </section>
         </aside>
-
-        <section class="terminal-panel" aria-label="CLIシミュレーター">
-          <div class="terminal-toolbar">
-            <div>
-              <span class="status-dot" aria-hidden="true"></span>
-              <span id="active-scenario-label">基本操作</span>
-            </div>
-            <div class="terminal-hint">入力して Enter</div>
-          </div>
-          <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
-          <form id="terminal-form" class="terminal-form">
-            <label for="terminal-input" class="prompt">[student@alma-lab ~]$</label>
-            <input id="terminal-input" name="command" autocomplete="off" spellcheck="false" autofocus>
-          </form>
-        </section>
 
         <aside class="state-panel" aria-label="状態と設定ファイル">
           <section class="panel-section topology-section">
@@ -84,17 +69,44 @@
           </section>
 
           <section class="panel-section">
+            <h2>達成状況</h2>
+            <div id="goal-list" class="goal-list"></div>
+          </section>
+
+          <section class="panel-section files-section">
             <h2>設定ファイル</h2>
             <div id="file-list" class="file-list"></div>
             <div id="file-explainer" class="file-explainer"></div>
           </section>
-
-          <section class="panel-section">
-            <h2>達成状況</h2>
-            <div id="goal-list" class="goal-list"></div>
-          </section>
         </aside>
       </main>
+
+      <section id="terminal-panel" class="terminal-panel" aria-label="CLIシミュレーター">
+        <div class="terminal-toolbar">
+          <div class="terminal-title">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="active-scenario-label">基本操作</span>
+          </div>
+          <div class="terminal-hint">入力して Enter</div>
+          <div class="terminal-actions" aria-label="ターミナル表示">
+            <button id="terminal-dock" class="terminal-icon-button" type="button" title="下部に固定" aria-label="下部に固定">
+              <span aria-hidden="true">▁</span>
+            </button>
+            <button id="terminal-expand" class="terminal-icon-button" type="button" title="広げて表示" aria-label="広げて表示">
+              <span aria-hidden="true">□</span>
+            </button>
+            <button id="terminal-minimize" class="terminal-icon-button" type="button" title="最小化" aria-label="最小化">
+              <span aria-hidden="true">-</span>
+            </button>
+          </div>
+        </div>
+        <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
+        <form id="terminal-form" class="terminal-form">
+          <label for="terminal-input" class="prompt">[student@alma-lab ~]$</label>
+          <input id="terminal-input" name="command" autocomplete="off" spellcheck="false" autofocus>
+          <button class="terminal-submit" type="submit" title="コマンドを実行" aria-label="コマンドを実行">実行</button>
+        </form>
+      </section>
     </div>
 
     <template id="welcome-template">
