@@ -43,40 +43,42 @@
             <div id="exercise-guide" class="exercise-guide"></div>
           </section>
 
-          <section class="panel-section">
-            <h2>達成状況</h2>
-            <div id="goal-list" class="goal-list"></div>
-          </section>
+          <div class="progress-column">
+            <section class="panel-section">
+              <h2>達成状況</h2>
+              <div id="goal-list" class="goal-list"></div>
+            </section>
+
+            <section id="terminal-panel" class="terminal-panel" aria-label="CLIシミュレーター">
+              <div class="terminal-toolbar">
+                <div class="terminal-title">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <span id="active-scenario-label">基本操作</span>
+                </div>
+                <div class="terminal-hint">入力して Enter</div>
+                <div class="terminal-actions" aria-label="ターミナル表示">
+                  <button id="terminal-dock" class="terminal-icon-button" type="button" title="達成状況の下に埋め込む" aria-label="達成状況の下に埋め込む">
+                    <span aria-hidden="true">▤</span>
+                  </button>
+                  <button id="terminal-expand" class="terminal-icon-button" type="button" title="広げて表示" aria-label="広げて表示">
+                    <span aria-hidden="true">□</span>
+                  </button>
+                  <button id="terminal-minimize" class="terminal-icon-button" type="button" title="最小化" aria-label="最小化">
+                    <span aria-hidden="true">-</span>
+                  </button>
+                </div>
+              </div>
+              <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
+              <form id="terminal-form" class="terminal-form">
+                <label for="terminal-input" class="prompt">[student@alma-lab ~]$</label>
+                <input id="terminal-input" name="command" autocomplete="off" spellcheck="false" autofocus>
+                <button class="terminal-submit" type="submit" title="コマンドを実行" aria-label="コマンドを実行">実行</button>
+              </form>
+              <button id="terminal-resize-handle" class="terminal-resize-handle" type="button" title="ドラッグしてサイズ調整" aria-label="ドラッグしてサイズ調整"></button>
+            </section>
+          </div>
         </aside>
       </main>
-
-      <section id="terminal-panel" class="terminal-panel" aria-label="CLIシミュレーター">
-        <div class="terminal-toolbar">
-          <div class="terminal-title">
-            <span class="status-dot" aria-hidden="true"></span>
-            <span id="active-scenario-label">基本操作</span>
-          </div>
-          <div class="terminal-hint">入力して Enter</div>
-          <div class="terminal-actions" aria-label="ターミナル表示">
-            <button id="terminal-dock" class="terminal-icon-button" type="button" title="標準位置へ戻す" aria-label="標準位置へ戻す">
-              <span aria-hidden="true">↺</span>
-            </button>
-            <button id="terminal-expand" class="terminal-icon-button" type="button" title="広げて表示" aria-label="広げて表示">
-              <span aria-hidden="true">□</span>
-            </button>
-            <button id="terminal-minimize" class="terminal-icon-button" type="button" title="最小化" aria-label="最小化">
-              <span aria-hidden="true">-</span>
-            </button>
-          </div>
-        </div>
-        <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
-        <form id="terminal-form" class="terminal-form">
-          <label for="terminal-input" class="prompt">[student@alma-lab ~]$</label>
-          <input id="terminal-input" name="command" autocomplete="off" spellcheck="false" autofocus>
-          <button class="terminal-submit" type="submit" title="コマンドを実行" aria-label="コマンドを実行">実行</button>
-        </form>
-        <button id="terminal-resize-handle" class="terminal-resize-handle" type="button" title="ドラッグしてサイズ調整" aria-label="ドラッグしてサイズ調整"></button>
-      </section>
     </div>
 
     <template id="welcome-template">

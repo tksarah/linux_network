@@ -11,8 +11,10 @@ import {
 
 const SCENARIO_KEY = "linux-network-lab-scenario";
 const TERMINAL_MODE_KEY = "linux-network-lab-terminal-mode";
+const TERMINAL_RETURN_MODE_KEY = "linux-network-lab-terminal-return-mode";
 const TERMINAL_GEOMETRY_KEY = "linux-network-lab-terminal-geometry";
-const terminalModes = new Set(["floating", "expanded", "minimized"]);
+const terminalModes = new Set(["floating", "embedded", "expanded", "minimized"]);
+const terminalReturnModes = new Set(["floating", "embedded"]);
 const TERMINAL_MARGIN_DESKTOP = 18;
 const TERMINAL_MARGIN_MOBILE = 10;
 const TERMINAL_DEFAULT_WIDTH = 620;
@@ -82,6 +84,7 @@ const baseCompletionCandidates = [
 
 let state = createInitialState(loadScenarioId());
 let terminalMode = loadTerminalMode();
+let terminalReturnMode = loadTerminalReturnMode(terminalMode);
 let terminalGeometry = loadTerminalGeometry() || getDefaultTerminalGeometry();
 let terminalInteraction = null;
 let commandHistory = [];
@@ -131,21 +134,20 @@ function initialize() {
   window.addEventListener("resize", keepTerminalInViewport);
 
   terminalDockButton.addEventListener("click", () => {
-    resetTerminalGeometry();
-    setTerminalMode("floating");
+    setTerminalMode(getTerminalDockTarget());
   });
 
   terminalExpandButton.addEventListener("click", () => {
-    setTerminalMode(terminalMode === "expanded" ? "floating" : "expanded");
+    setTerminalMode(terminalMode === "expanded" ? terminalReturnMode : "expanded");
   });
 
   terminalMinimizeButton.addEventListener("click", () => {
-    setTerminalMode(terminalMode === "minimized" ? "floating" : "minimized");
+    setTerminalMode(terminalMode === "minimized" ? terminalReturnMode : "minimized");
   });
 
   terminalPanel.addEventListener("click", event => {
     if (terminalMode === "minimized" && !event.target.closest("button")) {
-      setTerminalMode("floating");
+      setTerminalMode(terminalReturnMode);
     }
   });
 
@@ -717,12 +719,16 @@ function focusTerminalInput() {
 
 function openTerminal() {
   if (terminalMode === "minimized") {
-    setTerminalMode("floating", { focus: false });
+    setTerminalMode(terminalReturnMode, { focus: false });
   }
 }
 
 function setTerminalMode(mode, options = {}) {
   terminalMode = normalizeTerminalMode(mode);
+  if (terminalReturnModes.has(terminalMode)) {
+    terminalReturnMode = terminalMode;
+    saveTerminalReturnMode();
+  }
   applyTerminalMode(terminalMode, options);
   localStorage.setItem(TERMINAL_MODE_KEY, terminalMode);
 }
@@ -746,15 +752,30 @@ function applyTerminalMode(mode, options = {}) {
 function updateTerminalControls(mode) {
   terminalDockButton.disabled = false;
 
-  const expandLabel = mode === "expanded" ? "小窓に戻す" : "広げて表示";
+  const dockTarget = getTerminalDockTarget();
+  const dockLabel = dockTarget === "embedded" ? "達成状況の下に埋め込む" : "フローティング表示に戻す";
+  terminalDockButton.title = dockLabel;
+  terminalDockButton.setAttribute("aria-label", dockLabel);
+  terminalDockButton.querySelector("span").textContent = dockTarget === "embedded" ? "▤" : "↗";
+
+  const expandLabel = mode === "expanded" ? getReturnModeLabel() : "広げて表示";
   terminalExpandButton.title = expandLabel;
   terminalExpandButton.setAttribute("aria-label", expandLabel);
   terminalExpandButton.querySelector("span").textContent = mode === "expanded" ? "▣" : "□";
 
-  const minimizeLabel = mode === "minimized" ? "ターミナルを開く" : "最小化";
+  const minimizeLabel = mode === "minimized" ? getReturnModeLabel() : "最小化";
   terminalMinimizeButton.title = minimizeLabel;
   terminalMinimizeButton.setAttribute("aria-label", minimizeLabel);
   terminalMinimizeButton.querySelector("span").textContent = mode === "minimized" ? "+" : "-";
+}
+
+function getTerminalDockTarget() {
+  const baseMode = terminalReturnModes.has(terminalMode) ? terminalMode : terminalReturnMode;
+  return baseMode === "embedded" ? "floating" : "embedded";
+}
+
+function getReturnModeLabel() {
+  return terminalReturnMode === "embedded" ? "埋め込み表示に戻す" : "小窓に戻す";
 }
 
 function loadScenarioId() {
@@ -766,7 +787,17 @@ function loadTerminalMode() {
   return normalizeTerminalMode(saved);
 }
 
+function loadTerminalReturnMode(mode) {
+  if (terminalReturnModes.has(mode)) return mode;
+  const saved = localStorage.getItem(TERMINAL_RETURN_MODE_KEY);
+  return terminalReturnModes.has(saved) ? saved : "floating";
+}
+
+function saveTerminalReturnMode() {
+  localStorage.setItem(TERMINAL_RETURN_MODE_KEY, terminalReturnMode);
+}
+
 function normalizeTerminalMode(mode) {
-  if (mode === "dock") return "floating";
+  if (mode === "dock") return "embedded";
   return terminalModes.has(mode) ? mode : "floating";
 }

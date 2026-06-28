@@ -148,6 +148,12 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.progress-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .panel-section {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -387,6 +393,20 @@ body[data-terminal-mode="floating"] .terminal-panel {
   max-height: calc(100vh - 20px);
 }
 
+body[data-terminal-mode="embedded"] .terminal-panel {
+  position: relative;
+  z-index: 1;
+  inset: auto;
+  width: 100%;
+  height: clamp(300px, 40vh, 420px);
+  min-width: 0;
+  min-height: 300px;
+  max-width: none;
+  max-height: none;
+  box-shadow: var(--shadow);
+  resize: none;
+}
+
 body[data-terminal-mode="expanded"] .terminal-panel {
   inset: 76px 18px 18px;
   height: auto;
@@ -551,8 +571,14 @@ body[data-terminal-mode="minimized"] .terminal-panel {
 }
 
 body[data-terminal-mode="expanded"] .terminal-resize-handle,
+body[data-terminal-mode="embedded"] .terminal-resize-handle,
 body[data-terminal-mode="minimized"] .terminal-resize-handle {
   display: none;
+}
+
+body[data-terminal-mode="embedded"] .terminal-toolbar {
+  cursor: default;
+  touch-action: auto;
 }
 
 body[data-terminal-mode="minimized"] .terminal-toolbar {
@@ -1020,6 +1046,11 @@ body[data-terminal-mode="minimized"] .terminal-hint {
     height: 310px;
     min-height: 260px;
     min-width: 0;
+  }
+
+  body[data-terminal-mode="embedded"] .terminal-panel {
+    height: 320px;
+    min-height: 300px;
   }
 
   body[data-terminal-mode="expanded"] .terminal-panel {
