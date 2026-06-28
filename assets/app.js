@@ -12,15 +12,24 @@ import {
 
 const SCENARIO_KEY = "linux-network-lab-scenario";
 const TERMINAL_MODE_KEY = "linux-network-lab-terminal-mode";
-const terminalModes = new Set(["dock", "expanded", "minimized"]);
+const TERMINAL_GEOMETRY_KEY = "linux-network-lab-terminal-geometry";
+const terminalModes = new Set(["floating", "expanded", "minimized"]);
+const TERMINAL_MARGIN_DESKTOP = 18;
+const TERMINAL_MARGIN_MOBILE = 10;
+const TERMINAL_DEFAULT_WIDTH = 620;
+const TERMINAL_DEFAULT_HEIGHT = 380;
+const TERMINAL_MIN_WIDTH = 360;
+const TERMINAL_MIN_HEIGHT = 260;
 
 const terminalPanel = document.querySelector("#terminal-panel");
+const terminalToolbar = terminalPanel.querySelector(".terminal-toolbar");
 const terminalOutput = document.querySelector("#terminal-output");
 const terminalForm = document.querySelector("#terminal-form");
 const terminalInput = document.querySelector("#terminal-input");
 const terminalDockButton = document.querySelector("#terminal-dock");
 const terminalExpandButton = document.querySelector("#terminal-expand");
 const terminalMinimizeButton = document.querySelector("#terminal-minimize");
+const terminalResizeHandle = document.querySelector("#terminal-resize-handle");
 const resetButton = document.querySelector("#reset-state");
 const helpButton = document.querySelector("#show-help");
 const scenarioList = document.querySelector("#scenario-list");
@@ -77,6 +86,8 @@ const baseCompletionCandidates = [
 let state = createInitialState(loadScenarioId());
 let selectedFile = "/etc/NetworkManager/system-connections/ens160.nmconnection";
 let terminalMode = loadTerminalMode();
+let terminalGeometry = loadTerminalGeometry() || getDefaultTerminalGeometry();
+let terminalInteraction = null;
 let commandHistory = [];
 let historyIndex = 0;
 let historyDraft = "";
@@ -116,21 +127,29 @@ function initialize() {
     }
   });
 
+  terminalToolbar.addEventListener("pointerdown", startTerminalDrag);
+  terminalResizeHandle.addEventListener("pointerdown", startTerminalResize);
+  window.addEventListener("pointermove", moveTerminalPointer);
+  window.addEventListener("pointerup", endTerminalPointer);
+  window.addEventListener("pointercancel", endTerminalPointer);
+  window.addEventListener("resize", keepTerminalInViewport);
+
   terminalDockButton.addEventListener("click", () => {
-    setTerminalMode("dock");
+    resetTerminalGeometry();
+    setTerminalMode("floating");
   });
 
   terminalExpandButton.addEventListener("click", () => {
-    setTerminalMode("expanded");
+    setTerminalMode(terminalMode === "expanded" ? "floating" : "expanded");
   });
 
   terminalMinimizeButton.addEventListener("click", () => {
-    setTerminalMode(terminalMode === "minimized" ? "dock" : "minimized");
+    setTerminalMode(terminalMode === "minimized" ? "floating" : "minimized");
   });
 
   terminalPanel.addEventListener("click", event => {
     if (terminalMode === "minimized" && !event.target.closest("button")) {
-      setTerminalMode("dock");
+      setTerminalMode("floating");
     }
   });
 
@@ -509,6 +528,180 @@ function moveCaretToEnd() {
   terminalInput.setSelectionRange(end, end);
 }
 
+function startTerminalDrag(event) {
+  if (terminalMode !== "floating" || isNonPrimaryPointer(event)) return;
+  if (event.target.closest("button, input, .terminal-resize-handle")) return;
+
+  const rect = terminalPanel.getBoundingClientRect();
+  startTerminalInteraction(event, "move", rect);
+}
+
+function startTerminalResize(event) {
+  if (terminalMode !== "floating" || isNonPrimaryPointer(event)) return;
+
+  const rect = terminalPanel.getBoundingClientRect();
+  startTerminalInteraction(event, "resize", rect);
+}
+
+function startTerminalInteraction(event, type, rect) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  terminalInteraction = {
+    type,
+    pointerId: event.pointerId,
+    captureTarget: event.currentTarget,
+    startX: event.clientX,
+    startY: event.clientY,
+    startGeometry: {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    }
+  };
+
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  document.body.classList.add(type === "move" ? "is-moving-terminal" : "is-resizing-terminal");
+}
+
+function moveTerminalPointer(event) {
+  if (!terminalInteraction || event.pointerId !== terminalInteraction.pointerId) return;
+
+  event.preventDefault();
+  const deltaX = event.clientX - terminalInteraction.startX;
+  const deltaY = event.clientY - terminalInteraction.startY;
+  const start = terminalInteraction.startGeometry;
+
+  const nextGeometry = terminalInteraction.type === "move"
+    ? {
+        ...start,
+        left: start.left + deltaX,
+        top: start.top + deltaY
+      }
+    : {
+        ...start,
+        width: start.width + deltaX,
+        height: start.height + deltaY
+      };
+
+  terminalGeometry = clampTerminalGeometry(nextGeometry);
+  applyTerminalGeometry();
+}
+
+function endTerminalPointer(event) {
+  if (!terminalInteraction || event.pointerId !== terminalInteraction.pointerId) return;
+
+  terminalInteraction.captureTarget?.releasePointerCapture?.(event.pointerId);
+  terminalInteraction = null;
+  document.body.classList.remove("is-moving-terminal", "is-resizing-terminal");
+  saveTerminalGeometry();
+}
+
+function isNonPrimaryPointer(event) {
+  return event.button !== undefined && event.button !== 0;
+}
+
+function keepTerminalInViewport() {
+  terminalGeometry = clampTerminalGeometry(terminalGeometry);
+  if (terminalMode === "floating") {
+    applyTerminalGeometry();
+  }
+  saveTerminalGeometry();
+}
+
+function resetTerminalGeometry() {
+  terminalGeometry = getDefaultTerminalGeometry();
+  applyTerminalGeometry();
+  saveTerminalGeometry();
+}
+
+function getDefaultTerminalGeometry() {
+  const bounds = getTerminalGeometryBounds();
+  const width = Math.min(TERMINAL_DEFAULT_WIDTH, bounds.maxWidth);
+  const height = Math.min(TERMINAL_DEFAULT_HEIGHT, Math.max(bounds.minHeight, Math.round(window.innerHeight * 0.46)), bounds.maxHeight);
+
+  return clampTerminalGeometry({
+    width,
+    height,
+    left: window.innerWidth - bounds.margin - width,
+    top: window.innerHeight - bounds.margin - height
+  });
+}
+
+function getTerminalGeometryBounds() {
+  const margin = window.innerWidth <= 800 ? TERMINAL_MARGIN_MOBILE : TERMINAL_MARGIN_DESKTOP;
+  const maxWidth = Math.max(1, window.innerWidth - margin * 2);
+  const maxHeight = Math.max(1, window.innerHeight - margin * 2);
+
+  return {
+    margin,
+    maxWidth,
+    maxHeight,
+    minWidth: Math.min(TERMINAL_MIN_WIDTH, maxWidth),
+    minHeight: Math.min(TERMINAL_MIN_HEIGHT, maxHeight)
+  };
+}
+
+function clampTerminalGeometry(geometry) {
+  const bounds = getTerminalGeometryBounds();
+  const width = clamp(toFiniteNumber(geometry.width, TERMINAL_DEFAULT_WIDTH), bounds.minWidth, bounds.maxWidth);
+  const height = clamp(toFiniteNumber(geometry.height, TERMINAL_DEFAULT_HEIGHT), bounds.minHeight, bounds.maxHeight);
+  const maxLeft = Math.max(bounds.margin, window.innerWidth - bounds.margin - width);
+  const maxTop = Math.max(bounds.margin, window.innerHeight - bounds.margin - height);
+  const left = clamp(toFiniteNumber(geometry.left, maxLeft), bounds.margin, maxLeft);
+  const top = clamp(toFiniteNumber(geometry.top, maxTop), bounds.margin, maxTop);
+
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    width: Math.round(width),
+    height: Math.round(height)
+  };
+}
+
+function applyTerminalGeometry() {
+  terminalGeometry = clampTerminalGeometry(terminalGeometry);
+  terminalPanel.style.left = `${terminalGeometry.left}px`;
+  terminalPanel.style.top = `${terminalGeometry.top}px`;
+  terminalPanel.style.right = "auto";
+  terminalPanel.style.bottom = "auto";
+  terminalPanel.style.width = `${terminalGeometry.width}px`;
+  terminalPanel.style.height = `${terminalGeometry.height}px`;
+}
+
+function clearTerminalGeometryStyles() {
+  terminalPanel.style.left = "";
+  terminalPanel.style.top = "";
+  terminalPanel.style.right = "";
+  terminalPanel.style.bottom = "";
+  terminalPanel.style.width = "";
+  terminalPanel.style.height = "";
+}
+
+function saveTerminalGeometry() {
+  localStorage.setItem(TERMINAL_GEOMETRY_KEY, JSON.stringify(terminalGeometry));
+}
+
+function loadTerminalGeometry() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TERMINAL_GEOMETRY_KEY));
+    if (!saved || typeof saved !== "object") return null;
+    return clampTerminalGeometry(saved);
+  } catch {
+    return null;
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function toFiniteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 function clearTerminal() {
   terminalOutput.innerHTML = "";
 }
@@ -524,12 +717,12 @@ function focusTerminalInput() {
 
 function openTerminal() {
   if (terminalMode === "minimized") {
-    setTerminalMode("dock", { focus: false });
+    setTerminalMode("floating", { focus: false });
   }
 }
 
 function setTerminalMode(mode, options = {}) {
-  terminalMode = terminalModes.has(mode) ? mode : "dock";
+  terminalMode = normalizeTerminalMode(mode);
   applyTerminalMode(terminalMode, options);
   localStorage.setItem(TERMINAL_MODE_KEY, terminalMode);
 }
@@ -537,6 +730,11 @@ function setTerminalMode(mode, options = {}) {
 function applyTerminalMode(mode, options = {}) {
   document.body.dataset.terminalMode = mode;
   terminalPanel.dataset.mode = mode;
+  if (mode === "floating") {
+    applyTerminalGeometry();
+  } else {
+    clearTerminalGeometryStyles();
+  }
   updateTerminalControls(mode);
   scrollTerminal();
 
@@ -546,8 +744,12 @@ function applyTerminalMode(mode, options = {}) {
 }
 
 function updateTerminalControls(mode) {
-  terminalDockButton.disabled = mode === "dock";
-  terminalExpandButton.disabled = mode === "expanded";
+  terminalDockButton.disabled = false;
+
+  const expandLabel = mode === "expanded" ? "小窓に戻す" : "広げて表示";
+  terminalExpandButton.title = expandLabel;
+  terminalExpandButton.setAttribute("aria-label", expandLabel);
+  terminalExpandButton.querySelector("span").textContent = mode === "expanded" ? "▣" : "□";
 
   const minimizeLabel = mode === "minimized" ? "ターミナルを開く" : "最小化";
   terminalMinimizeButton.title = minimizeLabel;
@@ -561,5 +763,10 @@ function loadScenarioId() {
 
 function loadTerminalMode() {
   const saved = localStorage.getItem(TERMINAL_MODE_KEY);
-  return terminalModes.has(saved) ? saved : "dock";
+  return normalizeTerminalMode(saved);
+}
+
+function normalizeTerminalMode(mode) {
+  if (mode === "dock") return "floating";
+  return terminalModes.has(mode) ? mode : "floating";
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linux CLI Lab Builder"
+  short_description: "Build Linux CLI lab simulators"
+  default_prompt: "Use $linux-cli-lab-builder to build a GitHub Pages Linux CLI learning simulator."

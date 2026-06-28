@@ -60,10 +60,6 @@ code {
   transition: padding-bottom 160ms ease;
 }
 
-body[data-terminal-mode="dock"] .app-shell {
-  padding-bottom: 380px;
-}
-
 body[data-terminal-mode="minimized"] .app-shell {
   padding-bottom: 86px;
 }
@@ -373,20 +369,26 @@ h2 {
   border-radius: 8px;
   box-shadow: var(--terminal-shadow);
   transition:
-    inset 160ms ease,
+    left 160ms ease,
+    top 160ms ease,
+    right 160ms ease,
+    bottom 160ms ease,
     width 160ms ease,
     height 160ms ease,
     min-height 160ms ease;
 }
 
-body[data-terminal-mode="dock"] .terminal-panel {
-  left: 18px;
+body[data-terminal-mode="floating"] .terminal-panel {
+  left: auto;
+  top: auto;
   right: 18px;
   bottom: 18px;
-  height: min(36vh, 360px);
+  width: min(620px, calc(100vw - 36px));
+  height: min(46vh, 380px);
+  min-width: min(360px, calc(100vw - 20px));
   min-height: 260px;
-  max-height: 70vh;
-  resize: vertical;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
 }
 
 body[data-terminal-mode="expanded"] .terminal-panel {
@@ -415,7 +417,10 @@ body[data-terminal-mode="minimized"] .terminal-panel {
   background: var(--terminal-2);
   color: #e7edf0;
   border-bottom: 1px solid var(--terminal-line);
+  cursor: move;
   font-weight: 700;
+  touch-action: none;
+  user-select: none;
 }
 
 .terminal-title {
@@ -462,6 +467,7 @@ body[data-terminal-mode="minimized"] .terminal-panel {
   color: #e7edf0;
   font-weight: 800;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .terminal-icon-button:hover:not(:disabled) {
@@ -533,8 +539,44 @@ body[data-terminal-mode="minimized"] .terminal-panel {
   background: #31404a;
 }
 
+.terminal-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 0 0 8px 0;
+  background:
+    linear-gradient(135deg, transparent 50%, rgba(231, 237, 240, 0.32) 51% 56%, transparent 57%),
+    linear-gradient(135deg, transparent 64%, rgba(231, 237, 240, 0.48) 65% 70%, transparent 71%);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+body[data-terminal-mode="expanded"] .terminal-resize-handle,
+body[data-terminal-mode="minimized"] .terminal-resize-handle {
+  display: none;
+}
+
 body[data-terminal-mode="minimized"] .terminal-toolbar {
   border-bottom: 0;
+  cursor: pointer;
+}
+
+.is-moving-terminal,
+.is-moving-terminal * {
+  cursor: move;
+}
+
+.is-resizing-terminal,
+.is-resizing-terminal * {
+  cursor: nwse-resize;
+}
+
+.is-moving-terminal .terminal-panel,
+.is-resizing-terminal .terminal-panel {
+  transition: none;
 }
 
 body[data-terminal-mode="minimized"] .terminal-output,
@@ -922,10 +964,6 @@ body[data-terminal-mode="minimized"] .terminal-hint {
 }
 
 @media (max-width: 800px) {
-  body[data-terminal-mode="dock"] .app-shell {
-    padding-bottom: 334px;
-  }
-
   body[data-terminal-mode="minimized"] .app-shell {
     padding-bottom: 76px;
   }
@@ -946,12 +984,15 @@ body[data-terminal-mode="minimized"] .terminal-hint {
     padding: 12px;
   }
 
-  body[data-terminal-mode="dock"] .terminal-panel {
+  body[data-terminal-mode="floating"] .terminal-panel {
     left: 10px;
-    right: 10px;
+    top: auto;
+    right: auto;
     bottom: 10px;
+    width: calc(100vw - 20px);
     height: 310px;
     min-height: 260px;
+    min-width: 0;
   }
 
   body[data-terminal-mode="expanded"] .terminal-panel {

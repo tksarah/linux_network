@@ -1,23 +1,23 @@
 ---
-name: linux-network-lab-builder
-description: Build or extend static browser-based Linux networking learning simulators for GitHub Pages, especially AlmaLinux/RHEL-style NetworkManager labs with nmcli, ip, ping, dig, nslookup, netstat, configuration-file inspection, progressive troubleshooting exercises, and reusable classroom-oriented Japanese UI.
+name: linux-cli-lab-builder
+description: Build or extend static browser-based Linux CLI learning simulators for GitHub Pages, including AlmaLinux/RHEL-style networking labs, service checks, filesystem permissions, package management, systemd, log investigation, progressive troubleshooting exercises, and classroom-oriented Japanese UI.
 ---
 
-# Linux Network Lab Builder
+# Linux CLI Lab Builder
 
 ## Workflow
 
-Use this skill when asked to create a Linux networking practice app, CLI simulator, GitHub Pages lab, or classroom exercise for AlmaLinux/RHEL network configuration.
+Use this skill when asked to create a Linux practice app, CLI simulator, GitHub Pages lab, or classroom exercise. Prefer it for networking labs, and adapt the same pattern for future Linux-related command simulators.
 
-1. Build a static app first: HTML, CSS, and browser JavaScript with no server dependency and no real host network mutation.
-2. Model virtual machine state explicitly: NetworkManager profile settings, active runtime settings, device status, route table, resolver state, hosts file, DNS records, command history, and exercise goals.
-3. Make `nmcli connection modify` update the profile and make `nmcli connection up` apply that profile to runtime state. This distinction is essential for teaching config files versus active communication.
+1. Confirm the target learners, distribution, commands, files, and troubleshooting scenarios.
+2. Build a static app first: HTML, CSS, and browser JavaScript with no server dependency and no real host mutation.
+3. Model virtual machine state explicitly: persistent configuration, active runtime state, command history, check results, and exercise goals.
 4. Provide a terminal-like UI plus visible state panels, file explainers, and scenario goals. Avoid landing pages; make the simulator usable on first load.
 5. Verify with command-engine tests and browser checks at desktop and mobile widths.
 
 ## Simulator Requirements
 
-Implement these commands at minimum:
+For an AlmaLinux/RHEL NetworkManager lab, implement these commands at minimum:
 
 - `nmcli device status`
 - `nmcli connection show`, `nmcli connection show --active`, `nmcli connection show <id>`
@@ -38,6 +38,8 @@ Expose these virtual files through `cat` and UI explanation:
 
 Use AlmaLinux/RHEL-like wording and command output, but keep outputs concise enough for students to scan.
 
+For other Linux lab topics, keep the same architecture: fake the command surface faithfully, keep state transitions explicit, and show the files or service state that explain the behavior.
+
 ## Exercise Design
 
 Create three progressive troubleshooting scenarios unless the user asks otherwise:
@@ -48,6 +50,10 @@ Create three progressive troubleshooting scenarios unless the user asks otherwis
 
 Track success with observable state and command history, not hidden free-text answers.
 
+## Delivery
+
+Keep the repository copy as the source of truth. When the user wants local reuse, install the same skill folder under the active Codex skills directory, normally `%USERPROFILE%\.codex\skills\linux-cli-lab-builder` on Windows.
+
 ## References
 
-Read `references/almalinux-network-lab.md` when designing command outputs, virtual files, exercise scenarios, and GitHub Pages deployment details.
+Read `references/linux-cli-lab-patterns.md` when designing command outputs, virtual files, exercise scenarios, validation, and GitHub Pages deployment details.
