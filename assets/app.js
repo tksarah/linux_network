@@ -1,9 +1,7 @@
 import {
   createInitialState,
   getExerciseGuide,
-  getFileNotes,
   getScenarioDetails,
-  getStateSummary,
   getTopologyDetails,
   getVirtualFiles,
   listScenarios,
@@ -36,10 +34,7 @@ const helpButton = document.querySelector("#show-help");
 const scenarioList = document.querySelector("#scenario-list");
 const exerciseGuide = document.querySelector("#exercise-guide");
 const commandChips = document.querySelector("#command-chips");
-const stateSummary = document.querySelector("#state-summary");
 const topologyMap = document.querySelector("#topology-map");
-const fileList = document.querySelector("#file-list");
-const fileExplainer = document.querySelector("#file-explainer");
 const goalList = document.querySelector("#goal-list");
 const scenarioLabel = document.querySelector("#active-scenario-label");
 const welcomeText = document.querySelector("#welcome-template").content.textContent.trim();
@@ -86,7 +81,6 @@ const baseCompletionCandidates = [
 ];
 
 let state = createInitialState(loadScenarioId());
-let selectedFile = "/etc/NetworkManager/system-connections/ens160.nmconnection";
 let terminalMode = loadTerminalMode();
 let terminalGeometry = loadTerminalGeometry() || getDefaultTerminalGeometry();
 let terminalInteraction = null;
@@ -193,8 +187,6 @@ function renderAll() {
   localStorage.setItem(SCENARIO_KEY, state.scenarioId);
   renderExerciseGuide();
   renderTopology();
-  renderStateSummary();
-  renderFiles();
   renderGoals();
   renderScenarios();
 }
@@ -440,44 +432,6 @@ function createCableToggle(toggle) {
   });
 
   return button;
-}
-
-function renderStateSummary() {
-  stateSummary.innerHTML = "";
-  for (const [label, value] of getStateSummary(state)) {
-    const dt = document.createElement("dt");
-    dt.textContent = label;
-    const dd = document.createElement("dd");
-    dd.textContent = value;
-    stateSummary.append(dt, dd);
-  }
-}
-
-function renderFiles() {
-  const files = getVirtualFiles(state);
-  const notes = getFileNotes();
-  fileList.innerHTML = "";
-
-  for (const path of Object.keys(files)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = path === selectedFile ? "file-button active" : "file-button";
-    button.textContent = path;
-    button.addEventListener("click", () => {
-      selectedFile = path;
-      renderFiles();
-    });
-    fileList.appendChild(button);
-  }
-
-  fileExplainer.innerHTML = `
-    <p>${notes[selectedFile]}</p>
-    <button class="inline-command" type="button">cat ${selectedFile}</button>
-  `;
-  fileExplainer.querySelector("button").addEventListener("click", () => {
-    terminalInput.value = `cat ${selectedFile}`;
-    focusTerminalInput();
-  });
 }
 
 function renderGoals() {

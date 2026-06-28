@@ -144,8 +144,7 @@ h2 {
   align-items: start;
 }
 
-.topology-section,
-.files-section {
+.topology-section {
   grid-column: 1 / -1;
 }
 
@@ -220,8 +219,7 @@ h2 {
   flex-wrap: wrap;
 }
 
-.command-chips button,
-.inline-command {
+.command-chips button {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface-2);
@@ -233,8 +231,6 @@ h2 {
 }
 
 .command-chips button:hover,
-.inline-command:hover,
-.file-button:hover,
 .scenario-card:hover {
   border-color: var(--accent);
 }
@@ -945,58 +941,6 @@ body[data-terminal-mode="minimized"] .terminal-hint {
   font-size: 0.84rem;
 }
 
-.state-summary {
-  display: grid;
-  grid-template-columns: 95px 1fr;
-  gap: 8px 12px;
-  margin: 0;
-  font-size: 0.88rem;
-}
-
-.state-summary dt {
-  color: var(--muted);
-}
-
-.state-summary dd {
-  margin: 0;
-  font-weight: 700;
-  font-family: "Cascadia Mono", "Consolas", monospace;
-  overflow-wrap: anywhere;
-}
-
-.file-list {
-  display: grid;
-  gap: 8px;
-}
-
-.file-button {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
-  padding: 9px;
-  text-align: left;
-  color: var(--ink);
-  font-family: "Cascadia Mono", "Consolas", monospace;
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
-}
-
-.file-button.active {
-  border-color: var(--accent);
-  background: #e8f7f4;
-}
-
-.file-explainer {
-  margin-top: 12px;
-  color: var(--muted);
-  line-height: 1.55;
-  font-size: 0.88rem;
-}
-
-.file-explainer p {
-  margin: 0 0 10px;
-}
-
 .goal-list {
   display: grid;
   gap: 9px;
@@ -1043,10 +987,6 @@ body[data-terminal-mode="minimized"] .terminal-hint {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
-  }
-
-  .lesson-panel .panel-section:last-child {
-    grid-column: 1 / -1;
   }
 }
 
