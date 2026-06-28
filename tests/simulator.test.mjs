@@ -16,7 +16,7 @@ function run(state, command) {
   const state = createInitialState("basic");
   assert.match(run(state, "nmcli device status"), /ens160\s+ethernet\s+connected/);
   assert.match(run(state, "ip route"), /default via 192\.168\.10\.1/);
-  assert.match(run(state, "dig repo.lab.example"), /192\.168\.20\.20/);
+  assert.match(run(state, "dig repo.lab.example"), /198\.51\.100\.20/);
   assert.match(run(state, "cat /etc/resolv.conf"), /nameserver 192\.168\.10\.53/);
 }
 
@@ -36,16 +36,20 @@ function run(state, command) {
   assert.match(getVirtualFiles(state)["/etc/NetworkManager/system-connections/ens160.nmconnection"], /dns=192\.168\.10\.53;/);
   assert.match(run(state, "cat /etc/resolv.conf"), /nameserver 203\.0\.113\.53/);
   assert.match(run(state, "nmcli connection up ens160"), /DNS=192\.168\.10\.53/);
-  assert.match(run(state, "nslookup repo.lab.example"), /Address: 192\.168\.20\.20/);
+  assert.match(run(state, "nslookup repo.lab.example"), /Address: 198\.51\.100\.20/);
 }
 
 {
   const state = createInitialState("route-and-name");
+  assert.doesNotMatch(run(state, "cat /etc/hosts"), /repo\.lab\.example/);
   assert.match(run(state, "ip route"), /default via 192\.168\.10\.254/);
-  assert.match(run(state, "dig repo.lab.example"), /192\.168\.20\.20/);
-  assert.match(run(state, "ping repo.lab.example"), /172\.16\.5\.20/);
+  assert.match(run(state, "ping 192.168.10.1"), /0% packet loss/);
+  assert.match(run(state, "dig repo.lab.example"), /198\.51\.100\.20/);
+  assert.match(run(state, "ping repo.lab.example"), /PING repo\.lab\.example \(198\.51\.100\.20\)/);
+  assert.match(run(state, "ping repo.lab.example"), /Destination Net Unreachable/);
   assert.match(run(state, "nmcli connection modify ens160 ipv4.gateway 192.168.10.1"), /successfully modified/);
   assert.match(run(state, "nmcli connection up ens160"), /GW=192\.168\.10\.1/);
+  assert.match(run(state, "ping repo.lab.example"), /0% packet loss/);
 }
 
 {
@@ -129,14 +133,12 @@ function run(state, command) {
 
 {
   const state = createInitialState("route-and-name");
-  run(state, "cat /etc/nsswitch.conf");
-  run(state, "cat /etc/hosts.bak");
+  run(state, "ping 192.168.10.1");
   run(state, "dig repo.lab.example");
-  run(state, "ping repo.lab.example");
   const details = getScenarioDetails(state);
   const guide = getExerciseGuide(state);
-  assert.equal(details.goals.find(goal => goal.id === "name-order").done, false);
-  assert.equal(guide.steps.find(step => step.id === "name-files").done, false);
+  assert.equal(details.goals.find(goal => goal.id === "route-cut").done, false);
+  assert.equal(guide.steps.find(step => step.id === "external-route-fail").done, false);
 }
 
 for (const scenarioId of ["basic", "link-down", "dns-broken", "route-and-name"]) {

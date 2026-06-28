@@ -4,7 +4,7 @@ const GOOD_GATEWAY = "192.168.10.1";
 const LAB_ADDRESS = "192.168.10.50/24";
 
 const DNS_RECORDS = {
-  "repo.lab.example": "192.168.20.20",
+  "repo.lab.example": "198.51.100.20",
   "mirror.lab.example": "192.168.20.30",
   "intranet.lab.example": "192.168.10.80",
   "www.almalinux.org": "104.21.81.56",
@@ -251,39 +251,40 @@ const SCENARIOS = [
   },
   {
     id: "route-and-name",
-    title: "演習3: 経路と名前解決順序",
+    title: "演習3: DNS正常時の経路切り分け",
     level: "上級",
-    description: "DNSは正しく見えますが、デフォルトゲートウェイとhosts優先の影響が混ざっています。",
+    description: "DNSは正常ですが、デフォルトゲートウェイが誤っているため外部サーバーに到達できません。",
     guide: {
-      summary: "経路表と名前解決の参照順を分けて確認し、digとpingの見え方が違う理由を説明できる状態にします。",
+      summary: "LAN内疎通、DNS応答、外部宛先への到達、経路表を順に確認し、原因がDNSではなくdefault gatewayであることを特定して修正します。",
       steps: [
+        {
+          id: "local-and-dns-check",
+          phase: "切り分け",
+          purpose: "LAN内疎通とDNS応答が正常か確認する",
+          commands: ["ping 192.168.10.1", "dig repo.lab.example"],
+          expected: "LAN内のpingは成功し、digはrepo.lab.exampleを198.51.100.20へ解決できる",
+          isDone: state =>
+            state.successes.has("ping:192.168.10.1") &&
+            state.successes.has("dns:repo.lab.example")
+        },
+        {
+          id: "external-route-fail",
+          phase: "外部疎通確認",
+          purpose: "名前解決後の外部宛先だけ失敗することを確認する",
+          commands: ["ping repo.lab.example", "ping 198.51.100.20"],
+          expected: "どちらも198.51.100.20宛てになり、Destination Net Unreachableで失敗する",
+          isDone: state =>
+            hasObservation(state, "ping:repo.lab.example") &&
+            hasObservation(state, "ping:198.51.100.20") &&
+            state.failures.has("route")
+        },
         {
           id: "route-check",
           phase: "経路確認",
-          purpose: "外部ネットワークへ出るdefault gatewayが正しいか確認する",
+          purpose: "default gatewayの値を経路表で確認する",
           commands: ["ip route", "netstat -rn"],
           expected: "default gateway が誤った 192.168.10.254 になっていることを見る",
           isDone: state => hasAnyObservation(state, ["ip:route", "netstat:rn"])
-        },
-        {
-          id: "name-compare",
-          phase: "名前解決確認",
-          purpose: "digとpingでrepo.lab.exampleの解決先が違うことを確認する",
-          commands: ["dig repo.lab.example", "ping repo.lab.example"],
-          expected: "digはDNSの192.168.20.20を返し、pingはhostsの172.16.5.20を使う",
-          isDone: state =>
-            hasObservation(state, "dig:repo.lab.example") &&
-            hasObservation(state, "ping:repo.lab.example")
-        },
-        {
-          id: "name-files",
-          phase: "設定確認",
-          purpose: "名前解決順序と固定ホスト定義をファイルで確認する",
-          commands: ["cat /etc/nsswitch.conf", "cat /etc/hosts"],
-          expected: "hosts: files dns の順序と、repo.lab.example のhosts定義を確認する",
-          isDone: state =>
-            hasObservation(state, "cat:/etc/nsswitch.conf") &&
-            hasObservation(state, "cat:/etc/hosts")
         },
         {
           id: "route-fix-apply",
@@ -291,10 +292,13 @@ const SCENARIOS = [
           purpose: "default gatewayを正しい値に変更し、ランタイムへ反映する",
           commands: [
             "nmcli connection modify ens160 ipv4.gateway 192.168.10.1",
-            "nmcli connection up ens160"
+            "nmcli connection up ens160",
+            "ping repo.lab.example"
           ],
-          expected: "反映後のGWが192.168.10.1になり、外部宛先への経路が成立する",
-          isDone: state => state.runtime.gateway === GOOD_GATEWAY
+          expected: "反映後のGWが192.168.10.1になり、repo.lab.exampleへのpingが成功する",
+          isDone: state =>
+            state.runtime.gateway === GOOD_GATEWAY &&
+            state.successes.has("ping:repo.lab.example")
         }
       ]
     },
@@ -307,30 +311,28 @@ const SCENARIOS = [
         dns: DNS_SERVER,
         autoconnect: true
       },
-      runtimeMatchesProfile: true,
-      hosts: {
-        "repo.lab.example": "172.16.5.20"
-      }
+      runtimeMatchesProfile: true
     },
     goals: [
+      {
+        id: "route-cut",
+        text: "LAN内疎通とDNS成功、外部宛先失敗を比較",
+        isDone: state =>
+          state.successes.has("ping:192.168.10.1") &&
+          state.successes.has("dns:repo.lab.example") &&
+          state.failures.has("route")
+      },
       {
         id: "route-see",
         text: "ip routeまたはnetstat -rnで誤ったdefault gatewayを確認",
         isDone: state => hasAnyObservation(state, ["ip:route", "netstat:rn"])
       },
       {
-        id: "name-order",
-        text: "nsswitch.confとhostsを読み、digとpingの名前解決差を確認",
-        isDone: state =>
-          hasObservation(state, "cat:/etc/nsswitch.conf") &&
-          hasObservation(state, "cat:/etc/hosts") &&
-          hasObservation(state, "dig:repo.lab.example") &&
-          hasObservation(state, "ping:repo.lab.example")
-      },
-      {
         id: "route-fix",
-        text: "ipv4.gatewayを192.168.10.1へ修正してconnection up",
-        isDone: state => state.runtime.gateway === GOOD_GATEWAY
+        text: "ipv4.gatewayを192.168.10.1へ修正してconnection up後、repo.lab.exampleへping成功",
+        isDone: state =>
+          state.runtime.gateway === GOOD_GATEWAY &&
+          state.successes.has("ping:repo.lab.example")
       }
     ]
   }
