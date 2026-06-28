@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linux Network Lab Builder"
+  short_description: "Build static Linux networking labs"
+  default_prompt: "Use $linux-network-lab-builder to build a GitHub Pages Linux network CLI simulator."
