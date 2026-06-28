@@ -1,4 +1,5 @@
 const DNS_SERVER = "192.168.10.53";
+const PUBLIC_DNS_SERVER = "8.8.8.8";
 const GOOD_GATEWAY = "192.168.10.1";
 const LAB_ADDRESS = "192.168.10.50/24";
 
@@ -7,7 +8,8 @@ const DNS_RECORDS = {
   "mirror.lab.example": "192.168.20.30",
   "intranet.lab.example": "192.168.10.80",
   "www.almalinux.org": "104.21.81.56",
-  "dns.lab.example": DNS_SERVER
+  "dns.lab.example": DNS_SERVER,
+  "public-dns.lab.example": PUBLIC_DNS_SERVER
 };
 
 const BASE_HOSTS = {
@@ -40,33 +42,33 @@ const SCENARIOS = [
           commands: ["nmcli device status", "nmcli connection show ens160"],
           expected: "ens160 が connected で、IP、GW、DNS がプロファイルに設定されていることを見る",
           isDone: state =>
-            state.commands.some(commandStarts("nmcli device status")) &&
-            state.commands.some(commandStarts("nmcli connection show ens160"))
+            hasObservation(state, "nmcli:device-status") &&
+            hasObservation(state, "nmcli:connection-show:ens160")
         },
         {
           id: "basic-check-files",
           phase: "設定確認",
-          purpose: "nmcliで見た設定が、どの設定ファイルに相当するか確認する",
+          purpose: "2つの設定ファイルをcatで確認する",
           commands: [
             "cat /etc/NetworkManager/system-connections/ens160.nmconnection",
             "cat /etc/resolv.conf"
           ],
-          expected: "nmconnectionのaddress1/dnsと、resolv.confのnameserverを対応づける",
+          expected: "ens160.nmconnectionのaddress1/dnsと、resolv.confのnameserverを両方確認する",
           isDone: state =>
-            state.commands.some(commandIncludes("/etc/NetworkManager/system-connections/ens160.nmconnection")) &&
-            state.commands.some(commandIncludes("/etc/resolv.conf"))
+            hasObservation(state, "cat:/etc/NetworkManager/system-connections/ens160.nmconnection") &&
+            hasObservation(state, "cat:/etc/resolv.conf")
         },
         {
           id: "basic-verify-network",
           phase: "検証",
           purpose: "IPアドレス、経路、疎通、名前解決を順番に確認する",
           commands: ["ip addr", "ip route", "ping 192.168.10.1", "dig repo.lab.example"],
-          expected: "Active IP、default route、ゲートウェイへのping成功、DNS応答を確認する",
+          expected: "Active IP、default route、ゲートウェイへのping成功、ローカルDNSからの応答を確認する",
           isDone: state =>
-            state.commands.some(commandStarts("ip addr")) &&
-            state.commands.some(commandStarts("ip route")) &&
-            state.commands.some(commandStarts("ping 192.168.10.1")) &&
-            state.commands.some(commandStarts("dig repo.lab.example"))
+            hasObservation(state, "ip:addr") &&
+            hasObservation(state, "ip:route") &&
+            state.successes.has("ping:192.168.10.1") &&
+            state.successes.has("dns:repo.lab.example")
         }
       ]
     },
@@ -85,22 +87,22 @@ const SCENARIOS = [
       {
         id: "basic-status",
         text: "nmcli device statusでNICの状態を確認",
-        isDone: state => state.commands.some(commandStarts("nmcli device status"))
+        isDone: state => hasObservation(state, "nmcli:device-status")
       },
       {
         id: "basic-files",
-        text: "設定ファイルとresolv.confをcatで確認",
+        text: "2つのファイルをcatで確認: ens160.nmconnection と /etc/resolv.conf",
         isDone: state =>
-          state.commands.some(commandIncludes("/etc/NetworkManager/system-connections/ens160.nmconnection")) &&
-          state.commands.some(commandIncludes("/etc/resolv.conf"))
+          hasObservation(state, "cat:/etc/NetworkManager/system-connections/ens160.nmconnection") &&
+          hasObservation(state, "cat:/etc/resolv.conf")
       },
       {
         id: "basic-verify",
-        text: "ping、dig、ip routeで通信を確認",
+        text: "ip route、ping 192.168.10.1、dig repo.lab.exampleで通信を確認",
         isDone: state =>
-          state.commands.some(commandStarts("ping")) &&
-          state.commands.some(commandStarts("dig")) &&
-          state.commands.some(commandStarts("ip route"))
+          hasObservation(state, "ip:route") &&
+          state.successes.has("ping:192.168.10.1") &&
+          state.successes.has("dns:repo.lab.example")
       }
     ]
   },
@@ -119,8 +121,8 @@ const SCENARIOS = [
           commands: ["nmcli device status", "nmcli connection show --active"],
           expected: "ens160 が disconnected、またはactive connection一覧に出ないことを見る",
           isDone: state =>
-            state.commands.some(commandStarts("nmcli device status")) &&
-            state.commands.some(commandStarts("nmcli connection show --active"))
+            hasObservation(state, "nmcli:device-status") &&
+            hasObservation(state, "nmcli:connection-show:active")
         },
         {
           id: "link-activate",
@@ -137,8 +139,8 @@ const SCENARIOS = [
           commands: ["ip addr", "ip route", "ping 192.168.10.1"],
           expected: "ens160にIPが付き、default routeが表示され、pingが0% packet lossになる",
           isDone: state =>
-            state.commands.some(commandStarts("ip addr")) &&
-            state.commands.some(commandStarts("ip route")) &&
+            hasObservation(state, "ip:addr") &&
+            hasObservation(state, "ip:route") &&
             state.successes.has("ping:192.168.10.1")
         }
       ]
@@ -159,8 +161,8 @@ const SCENARIOS = [
         id: "link-see",
         text: "device statusとconnection showで未接続を確認",
         isDone: state =>
-          state.commands.some(commandStarts("nmcli device status")) &&
-          state.commands.some(commandStarts("nmcli connection show"))
+          hasObservation(state, "nmcli:device-status") &&
+          hasAnyObservation(state, ["nmcli:connection-show", "nmcli:connection-show:active", "nmcli:connection-show:ens160"])
       },
       {
         id: "link-up",
@@ -195,13 +197,13 @@ const SCENARIOS = [
           phase: "設定確認",
           purpose: "現在反映されているDNSサーバーをresolv.confで確認する",
           commands: ["cat /etc/resolv.conf"],
-          expected: "nameserver が誤った 203.0.113.53 になっていることを見る",
-          isDone: state => state.commands.some(commandIncludes("/etc/resolv.conf"))
+          expected: "nameserver がローカルDNS 192.168.10.53 ではなく、誤った 203.0.113.53 になっていることを見る",
+          isDone: state => hasObservation(state, "cat:/etc/resolv.conf")
         },
         {
           id: "dns-fix-profile",
           phase: "変更",
-          purpose: "NetworkManagerのプロファイル上のDNSサーバーを正しい値に変更する",
+          purpose: "NetworkManagerのプロファイル上のDNSサーバーをローカルDNSへ変更する",
           commands: ["nmcli connection modify ens160 ipv4.dns 192.168.10.53"],
           expected: "successfully modified と表示されるが、この時点ではまだランタイム未反映",
           isDone: state => state.profile.dns === DNS_SERVER
@@ -211,7 +213,7 @@ const SCENARIOS = [
           phase: "反映と検証",
           purpose: "connection upで変更を反映し、名前解決が直ったことを確認する",
           commands: ["nmcli connection up ens160", "nslookup repo.lab.example"],
-          expected: "反映後のDNSが192.168.10.53になり、repo.lab.exampleのAddressが返る",
+          expected: "反映後のDNSがローカルDNS 192.168.10.53になり、repo.lab.exampleのAddressが返る",
           isDone: state =>
             state.runtime.dns === DNS_SERVER &&
             state.successes.has("dns:repo.lab.example")
@@ -261,7 +263,7 @@ const SCENARIOS = [
           purpose: "外部ネットワークへ出るdefault gatewayが正しいか確認する",
           commands: ["ip route", "netstat -rn"],
           expected: "default gateway が誤った 192.168.10.254 になっていることを見る",
-          isDone: state => state.commands.some(commandStarts("ip route")) || state.commands.some(commandStarts("netstat -rn"))
+          isDone: state => hasAnyObservation(state, ["ip:route", "netstat:rn"])
         },
         {
           id: "name-compare",
@@ -270,8 +272,8 @@ const SCENARIOS = [
           commands: ["dig repo.lab.example", "ping repo.lab.example"],
           expected: "digはDNSの192.168.20.20を返し、pingはhostsの172.16.5.20を使う",
           isDone: state =>
-            state.commands.some(commandStarts("dig repo.lab.example")) &&
-            state.commands.some(commandStarts("ping repo.lab.example"))
+            hasObservation(state, "dig:repo.lab.example") &&
+            hasObservation(state, "ping:repo.lab.example")
         },
         {
           id: "name-files",
@@ -280,8 +282,8 @@ const SCENARIOS = [
           commands: ["cat /etc/nsswitch.conf", "cat /etc/hosts"],
           expected: "hosts: files dns の順序と、repo.lab.example のhosts定義を確認する",
           isDone: state =>
-            state.commands.some(commandIncludes("/etc/nsswitch.conf")) &&
-            state.commands.some(commandIncludes("/etc/hosts"))
+            hasObservation(state, "cat:/etc/nsswitch.conf") &&
+            hasObservation(state, "cat:/etc/hosts")
         },
         {
           id: "route-fix-apply",
@@ -314,16 +316,16 @@ const SCENARIOS = [
       {
         id: "route-see",
         text: "ip routeまたはnetstat -rnで誤ったdefault gatewayを確認",
-        isDone: state => state.commands.some(commandStarts("ip route")) || state.commands.some(commandStarts("netstat -rn"))
+        isDone: state => hasAnyObservation(state, ["ip:route", "netstat:rn"])
       },
       {
         id: "name-order",
         text: "nsswitch.confとhostsを読み、digとpingの名前解決差を確認",
         isDone: state =>
-          state.commands.some(commandIncludes("/etc/nsswitch.conf")) &&
-          state.commands.some(commandIncludes("/etc/hosts")) &&
-          state.commands.some(commandStarts("dig repo.lab.example")) &&
-          state.commands.some(commandStarts("ping repo.lab.example"))
+          hasObservation(state, "cat:/etc/nsswitch.conf") &&
+          hasObservation(state, "cat:/etc/hosts") &&
+          hasObservation(state, "dig:repo.lab.example") &&
+          hasObservation(state, "ping:repo.lab.example")
       },
       {
         id: "route-fix",
@@ -359,6 +361,7 @@ export function createInitialState(scenarioId = "basic") {
     nsswitchHosts: ["files", "dns"],
     hosts: { ...BASE_HOSTS, ...(scenario.start.hosts || {}) },
     commands: [],
+    observations: new Set(),
     successes: new Set(),
     failures: new Set(),
     lastMessage: ""
@@ -407,6 +410,7 @@ export function getTopologyDetails(state) {
   const gatewayStatus = !active ? "down" : gatewayOk ? "ok" : "error";
   const dnsStatus = !active ? "down" : dnsOk ? "ok" : "error";
   const endpointStatus = !active ? "down" : gatewayOk ? "ok" : "error";
+  const publicDnsStatus = !active ? "down" : gatewayOk ? "ok" : "down";
   const linuxStatus = !active ? "down" : dirty ? "pending" : "ok";
 
   return {
@@ -444,11 +448,11 @@ export function getTopologyDetails(state) {
         statusLabel: statusLabel(gatewayStatus)
       },
       {
-        id: "dns",
-        title: "DNSサーバー",
-        detail: "名前解決",
+        id: "localDns",
+        title: "ローカルDNSサーバー",
+        detail: "演習で指定するDNS",
         metric: state.runtime.dns || state.profile.dns || "未反映",
-        note: dnsOk ? "DNS問い合わせ先" : "正しいDNSは192.168.10.53",
+        note: dnsOk ? "現在のDNS問い合わせ先" : "正しい指定先は192.168.10.53",
         icon: TOPOLOGY_ICONS.dns,
         status: dnsStatus,
         statusLabel: statusLabel(dnsStatus)
@@ -462,6 +466,16 @@ export function getTopologyDetails(state) {
         icon: TOPOLOGY_ICONS.internet,
         status: endpointStatus,
         statusLabel: statusLabel(endpointStatus)
+      },
+      {
+        id: "publicDns",
+        title: "パブリックDNSサーバー",
+        detail: "インターネット側のDNS例",
+        metric: PUBLIC_DNS_SERVER,
+        note: "この演習では通常指定しない参照用DNS",
+        icon: TOPOLOGY_ICONS.dns,
+        status: publicDnsStatus,
+        statusLabel: statusLabel(publicDnsStatus)
       }
     ],
     links: [
@@ -480,10 +494,10 @@ export function getTopologyDetails(state) {
         status: gatewayStatus
       },
       {
-        id: "switch-dns",
+        id: "switch-local-dns",
         from: "switch",
-        to: "dns",
-        label: dnsOk ? "DNS OK" : active ? "DNS参照先が違う" : "未接続",
+        to: "localDns",
+        label: dnsOk ? "local DNS OK" : active ? "ローカルDNSを指定" : "未接続",
         status: dnsStatus
       },
       {
@@ -492,6 +506,13 @@ export function getTopologyDetails(state) {
         to: "internet",
         label: gatewayOk ? "外部宛先へ到達" : active ? "外部宛先に届かない" : "未接続",
         status: endpointStatus
+      },
+      {
+        id: "internet-public-dns",
+        from: "internet",
+        to: "publicDns",
+        label: "public DNS",
+        status: publicDnsStatus
       }
     ],
     notes: topologyNotes({ active, dirty, gatewayOk, dnsOk })
@@ -504,7 +525,7 @@ export function getStateSummary(state) {
     ["Profile IP", state.profile.address || "未設定"],
     ["Active IP", state.runtime.address || "未反映"],
     ["Gateway", state.runtime.gateway || "未反映"],
-    ["DNS", state.runtime.dns || "未反映"],
+    ["Local DNS", state.runtime.dns || "未反映"],
     ["反映状態", profileMatchesRuntime(state) ? "profile = runtime" : "connection upが必要"]
   ];
 }
@@ -522,7 +543,7 @@ export function getVirtualFiles(state) {
 export function getFileNotes() {
   return {
     "/etc/NetworkManager/system-connections/ens160.nmconnection": "NetworkManagerのconnection profileです。nmcli connection modifyでここに相当する設定が変わり、connection upでランタイムに反映されます。",
-    "/etc/resolv.conf": "現在の名前解決で参照するDNSサーバーです。このラボではconnection up後のDNS設定を反映します。",
+    "/etc/resolv.conf": "現在の名前解決で参照するDNSサーバーです。このラボではローカルDNSサーバー 192.168.10.53 を基本の指定先にします。",
     "/etc/nsswitch.conf": "名前解決の参照順を決めます。hosts: files dns なら /etc/hosts を先に見て、その後DNSを見ます。",
     "/etc/hostname": "このホスト自身の名前です。プロンプトやログ上の識別に使われます。",
     "/etc/hosts": "小規模な固定名前解決です。pingなど通常の名前解決ではnsswitch.confの順序に従って参照されます。"
@@ -560,10 +581,10 @@ export function runCommand(state, input) {
 
 function topologySummary({ active, dirty, gatewayOk, dnsOk }) {
   if (!active) return "端末のconnectionが未起動です。nmcli connection up ens160で通信状態へ反映します。";
-  if (!dnsOk) return "IP通信はできますが、DNSサーバーの参照先が誤っています。ipv4.dnsを確認します。";
+  if (!dnsOk) return "IP通信はできますが、ローカルDNSサーバーの参照先が誤っています。ipv4.dnsを確認します。";
   if (!gatewayOk) return "LAN内は見えますが、default gatewayが誤っているため外部宛先へ出られません。";
   if (dirty) return "プロファイル変更は保存済みですが、現在の通信にはまだ反映されていません。";
-  return "端末、LAN、GW、DNS、外部宛先までの基本経路が成立しています。";
+  return "端末、LAN、GW、ローカルDNS、外部宛先までの基本経路が成立しています。";
 }
 
 function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
@@ -572,7 +593,7 @@ function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
     notes.push("nmcli device status と nmcli connection show --active で未起動を確認します。");
   }
   if (active && !dnsOk) {
-    notes.push("ping 192.168.10.1 が成功して dig が失敗する場合は、IP経路ではなくDNS設定を疑います。");
+    notes.push("ping 192.168.10.1 が成功して dig が失敗する場合は、IP経路ではなくローカルDNS設定を疑います。");
   }
   if (active && !gatewayOk) {
     notes.push("ip route または netstat -rn で default gateway の値を確認します。");
@@ -581,7 +602,7 @@ function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
     notes.push("nmcli connection modify はプロファイル変更です。通信へ反映するには connection up が必要です。");
   }
   if (notes.length === 0) {
-    notes.push("確認、変更、反映、検証の順で見ると、どこで通信が止まるかを切り分けやすくなります。");
+    notes.push("演習ではローカルDNS 192.168.10.53 を指定します。パブリックDNSはインターネット側の参照例です。");
   }
   return notes;
 }
@@ -600,12 +621,16 @@ function getScenario(id) {
   return scenario;
 }
 
-function commandStarts(prefix) {
-  return command => normalizeCommand(command).startsWith(prefix);
+function markObservation(state, key) {
+  state.observations.add(key);
 }
 
-function commandIncludes(fragment) {
-  return command => normalizeCommand(command).includes(fragment);
+function hasObservation(state, key) {
+  return state.observations.has(key);
+}
+
+function hasAnyObservation(state, keys) {
+  return keys.some(key => hasObservation(state, key));
 }
 
 function normalizeCommand(command) {
@@ -642,7 +667,7 @@ function helpText() {
     "  netstat -rn",
     "  netstat -tuln",
     "",
-    "ヒント: modifyはプロファイル変更、upは反映です。"
+    "ヒント: modifyはプロファイル変更、upは反映です。DNS指定は基本的にローカルDNS 192.168.10.53 を使います。"
   ].join("\n") + "\n";
 }
 
@@ -651,6 +676,7 @@ function catFile(state, args) {
   const files = getVirtualFiles(state);
   const path = args[0];
   if (!files[path]) return `cat: ${path}: No such file or directory\n`;
+  markObservation(state, `cat:${path}`);
   return files[path];
 }
 
@@ -681,6 +707,7 @@ function nmcliCommand(state, args) {
 }
 
 function nmcliDeviceStatus(state) {
+  markObservation(state, "nmcli:device-status");
   return [
     "DEVICE  TYPE      STATE         CONNECTION",
     `${pad(state.device.name, 7)} ${pad(state.device.type, 9)} ${pad(state.device.state, 13)} ${state.runtime.active ? "ens160" : "--"}`
@@ -689,6 +716,8 @@ function nmcliDeviceStatus(state) {
 
 function nmcliConnectionShow(state, args) {
   if (args[0] === "--active") {
+    markObservation(state, "nmcli:connection-show");
+    markObservation(state, "nmcli:connection-show:active");
     if (!state.runtime.active) return "NAME  UUID  TYPE  DEVICE\n";
     return [
       "NAME    UUID                                  TYPE      DEVICE",
@@ -699,6 +728,8 @@ function nmcliConnectionShow(state, args) {
     return `Error: unknown connection '${args[0]}'\n`;
   }
   if (args[0] === "ens160") {
+    markObservation(state, "nmcli:connection-show");
+    markObservation(state, "nmcli:connection-show:ens160");
     return [
       "connection.id:                          ens160",
       "connection.uuid:                        9c6b8fd8-8d6d-4d35-a8ab-10a5f7f0e160",
@@ -711,6 +742,7 @@ function nmcliConnectionShow(state, args) {
       `ipv4.dns:                               ${state.profile.dns || "--"}`
     ].join("\n") + "\n";
   }
+  markObservation(state, "nmcli:connection-show");
   return [
     "NAME    UUID                                  TYPE      DEVICE",
     `ens160  9c6b8fd8-8d6d-4d35-a8ab-10a5f7f0e160  ethernet  ${state.runtime.active ? "ens160" : "--"}`
@@ -748,6 +780,7 @@ function nmcliConnectionModify(state, args) {
     }
   }
 
+  markObservation(state, "nmcli:connection-modify");
   return [
     `Connection 'ens160' successfully modified.`,
     `変更: ${changes.join(", ")}`,
@@ -766,6 +799,7 @@ function nmcliConnectionUp(state, args) {
   state.runtime = { ...state.profile, active: true };
   state.device.state = "connected";
   state.device.connection = "ens160";
+  markObservation(state, "nmcli:connection-up:ens160");
   return [
     "Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/7)",
     `反映: IP=${state.runtime.address || "DHCP想定"} GW=${state.runtime.gateway || "--"} DNS=${state.runtime.dns || "--"}`
@@ -775,12 +809,15 @@ function nmcliConnectionUp(state, args) {
 function ipCommand(state, args) {
   const normalized = args.join(" ");
   if (args[0] === "addr" || args[0] === "a" || normalized === "-4 addr" || normalized.startsWith("-4 addr show")) {
+    markObservation(state, "ip:addr");
     return ipAddr(state);
   }
   if (args[0] === "route" || normalized === "r") {
+    markObservation(state, "ip:route");
     return ipRoute(state);
   }
   if (args[0] === "link") {
+    markObservation(state, "ip:link");
     return [
       "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN mode DEFAULT group default qlen 1000",
       `2: ens160: <BROADCAST,MULTICAST,${state.runtime.active ? "UP,LOWER_UP" : "DOWN"}> mtu 1500 state ${state.runtime.active ? "UP" : "DOWN"} mode DEFAULT group default qlen 1000`
@@ -810,6 +847,7 @@ function ipRoute(state) {
 function pingCommand(state, args) {
   const target = args.find(arg => !arg.startsWith("-"));
   if (!target) return "ping: usage error: Destination address required\n";
+  markObservation(state, `ping:${target}`);
 
   const resolution = resolveForPing(state, target);
   if (!resolution.ok) {
@@ -839,6 +877,7 @@ function digCommand(state, args) {
   const short = args.includes("+short");
   const target = args.find(arg => !arg.startsWith("+") && !arg.startsWith("@"));
   if (!target) return "Usage: dig [@server] name\n";
+  markObservation(state, `dig:${target}`);
   const result = resolveDnsOnly(state, target);
   if (!result.ok) {
     state.failures.add("dns");
@@ -866,6 +905,7 @@ function digCommand(state, args) {
 function nslookupCommand(state, args) {
   const target = args[0];
   if (!target) return "Usage: nslookup name\n";
+  markObservation(state, `nslookup:${target}`);
   const result = resolveDnsOnly(state, target);
   if (!result.ok) {
     state.failures.add("dns");
@@ -884,6 +924,7 @@ function nslookupCommand(state, args) {
 
 function netstatCommand(state, args) {
   if (args.includes("-rn") || (args.includes("-r") && args.includes("-n"))) {
+    markObservation(state, "netstat:rn");
     const route = ipRoute(state).trim();
     return [
       "Kernel IP routing table",
@@ -897,6 +938,7 @@ function netstatCommand(state, args) {
     ].filter(Boolean).join("\n") + "\n";
   }
   if (args.includes("-tuln") || args.includes("-lntup")) {
+    markObservation(state, "netstat:tuln");
     return [
       "Active Internet connections (only servers)",
       "Proto Recv-Q Send-Q Local Address           Foreign Address         State",

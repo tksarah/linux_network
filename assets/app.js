@@ -37,6 +37,7 @@ const welcomeText = document.querySelector("#welcome-template").content.textCont
 const chips = [
   "nmcli device status",
   "nmcli connection show",
+  "nmcli connection show --active",
   "nmcli connection show ens160",
   "cat /etc/NetworkManager/system-connections/ens160.nmconnection",
   "cat /etc/resolv.conf",
@@ -49,9 +50,36 @@ const chips = [
   "netstat -rn"
 ];
 
+const baseCompletionCandidates = [
+  ...chips,
+  "help",
+  "clear",
+  "reset",
+  "hostname",
+  "ls /etc",
+  "ls /etc/NetworkManager/system-connections",
+  "ip link",
+  "netstat -tuln",
+  "ping repo.lab.example",
+  "ping intranet.lab.example",
+  "dig +short repo.lab.example",
+  "dig dns.lab.example",
+  "nslookup intranet.lab.example",
+  "repo.lab.example",
+  "intranet.lab.example",
+  "dns.lab.example",
+  "192.168.10.1",
+  "192.168.10.50",
+  "192.168.10.53",
+  "8.8.8.8"
+];
+
 let state = createInitialState(loadScenarioId());
 let selectedFile = "/etc/NetworkManager/system-connections/ens160.nmconnection";
 let terminalMode = loadTerminalMode();
+let commandHistory = [];
+let historyIndex = 0;
+let historyDraft = "";
 
 initialize();
 
@@ -65,14 +93,26 @@ function initialize() {
   terminalForm.addEventListener("submit", event => {
     event.preventDefault();
     const command = terminalInput.value;
+    rememberCommand(command);
     terminalInput.value = "";
     execute(command);
   });
 
   terminalInput.addEventListener("keydown", event => {
-    if (event.key === "Enter" && !event.isComposing) {
+    if (event.isComposing) return;
+
+    if (event.key === "Enter") {
       event.preventDefault();
       terminalForm.requestSubmit();
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+      completeTerminalInput();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveHistory(-1);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveHistory(1);
     }
   });
 
@@ -261,8 +301,10 @@ function renderTopology() {
     createTopologyNode(nodes.get("gateway")),
     createTopologyLink(links.get("gateway-internet"), "link-gateway-internet"),
     createTopologyNode(nodes.get("internet")),
-    createTopologyLink(links.get("switch-dns"), "link-switch-dns"),
-    createTopologyNode(nodes.get("dns"))
+    createTopologyLink(links.get("switch-local-dns"), "link-switch-local-dns"),
+    createTopologyNode(nodes.get("localDns")),
+    createTopologyLink(links.get("internet-public-dns"), "link-internet-public-dns"),
+    createTopologyNode(nodes.get("publicDns"))
   );
 
   const notes = document.createElement("ul");
@@ -278,7 +320,7 @@ function renderTopology() {
 
 function createTopologyNode(node) {
   const item = document.createElement("article");
-  item.className = `topology-node topology-node-${node.id} status-${node.status}`;
+  item.className = `topology-node topology-node-${toKebabCase(node.id)} status-${node.status}`;
 
   const image = document.createElement("img");
   image.src = node.icon;
@@ -313,6 +355,10 @@ function createTopologyNode(node) {
   body.append(label, detail, metric, note);
   item.append(image, body);
   return item;
+}
+
+function toKebabCase(value) {
+  return value.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
 }
 
 function createTopologyLink(link, className) {
@@ -395,6 +441,72 @@ function appendOutput(text) {
   line.textContent = text;
   terminalOutput.appendChild(line);
   scrollTerminal();
+}
+
+function rememberCommand(command) {
+  const trimmed = command.trim();
+  if (!trimmed) return;
+  if (commandHistory.at(-1) !== trimmed) {
+    commandHistory.push(trimmed);
+  }
+  historyIndex = commandHistory.length;
+  historyDraft = "";
+}
+
+function moveHistory(direction) {
+  if (commandHistory.length === 0) return;
+
+  if (historyIndex === commandHistory.length) {
+    historyDraft = terminalInput.value;
+  }
+
+  historyIndex = Math.max(0, Math.min(commandHistory.length, historyIndex + direction));
+  terminalInput.value = historyIndex === commandHistory.length ? historyDraft : commandHistory[historyIndex];
+  moveCaretToEnd();
+}
+
+function completeTerminalInput() {
+  const input = terminalInput.value;
+  const candidates = getCompletionCandidates();
+  const matches = candidates.filter(candidate => candidate.startsWith(input));
+
+  if (matches.length === 0) {
+    appendOutput("補完候補はありません。\n");
+    return;
+  }
+
+  const common = longestCommonPrefix(matches);
+  if (common.length > input.length) {
+    terminalInput.value = common;
+    moveCaretToEnd();
+  }
+
+  if (matches.length > 1) {
+    appendOutput(`補完候補:\n${matches.map(candidate => `  ${candidate}`).join("\n")}\n`);
+  }
+}
+
+function getCompletionCandidates() {
+  const files = Object.keys(getVirtualFiles(state));
+  const guideCommands = getExerciseGuide(state).steps.flatMap(step => step.commands);
+  const fileCommands = files.map(path => `cat ${path}`);
+  return [...new Set([...baseCompletionCandidates, ...guideCommands, ...files, ...fileCommands])].sort();
+}
+
+function longestCommonPrefix(values) {
+  if (values.length === 0) return "";
+  let prefix = values[0];
+  for (const value of values.slice(1)) {
+    while (!value.startsWith(prefix) && prefix) {
+      prefix = prefix.slice(0, -1);
+    }
+  }
+  return prefix;
+}
+
+function moveCaretToEnd() {
+  const end = terminalInput.value.length;
+  terminalInput.setSelectionRange(end, end);
 }
 
 function clearTerminal() {

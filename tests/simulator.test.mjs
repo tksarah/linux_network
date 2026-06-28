@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   createInitialState,
   getExerciseGuide,
+  getScenarioDetails,
   getTopologyDetails,
   getVirtualFiles,
   runCommand
@@ -75,7 +76,8 @@ function run(state, command) {
   const state = createInitialState("dns-broken");
   const topology = getTopologyDetails(state);
   assert.equal(topology.overallStatus, "attention");
-  assert.equal(topology.nodes.find(node => node.id === "dns").status, "error");
+  assert.equal(topology.nodes.find(node => node.id === "localDns").status, "error");
+  assert.equal(topology.nodes.find(node => node.id === "publicDns").metric, "8.8.8.8");
 }
 
 {
@@ -83,6 +85,73 @@ function run(state, command) {
   const topology = getTopologyDetails(state);
   assert.equal(topology.links.find(link => link.id === "gateway-internet").status, "error");
   assert.match(topology.summary, /default gateway/);
+}
+
+{
+  const state = createInitialState("basic");
+  run(state, "cat /etc/NetworkManager/system-connections/ens160.nmconnection");
+  let details = getScenarioDetails(state);
+  let guide = getExerciseGuide(state);
+  assert.equal(details.goals.find(goal => goal.id === "basic-files").done, false);
+  assert.equal(guide.steps.find(step => step.id === "basic-check-files").done, false);
+
+  run(state, "cat /etc/resolv.conf");
+  details = getScenarioDetails(state);
+  guide = getExerciseGuide(state);
+  assert.equal(details.goals.find(goal => goal.id === "basic-files").done, true);
+  assert.equal(guide.steps.find(step => step.id === "basic-check-files").done, true);
+}
+
+{
+  const state = createInitialState("basic");
+  run(state, "cat /etc/NetworkManager/system-connections/ens160.nmconnection");
+  run(state, "cat /etc/resolv.conf.bak");
+  const details = getScenarioDetails(state);
+  assert.equal(details.goals.find(goal => goal.id === "basic-files").done, false);
+}
+
+{
+  const state = createInitialState("basic");
+  run(state, "pingbad");
+  run(state, "digbad");
+  run(state, "ip routebad");
+  const details = getScenarioDetails(state);
+  assert.equal(details.goals.find(goal => goal.id === "basic-verify").done, false);
+}
+
+{
+  const state = createInitialState("link-down");
+  run(state, "nmcli device status");
+  run(state, "nmcli connection showfoo");
+  const details = getScenarioDetails(state);
+  assert.equal(details.goals.find(goal => goal.id === "link-see").done, false);
+}
+
+{
+  const state = createInitialState("route-and-name");
+  run(state, "cat /etc/nsswitch.conf");
+  run(state, "cat /etc/hosts.bak");
+  run(state, "dig repo.lab.example");
+  run(state, "ping repo.lab.example");
+  const details = getScenarioDetails(state);
+  const guide = getExerciseGuide(state);
+  assert.equal(details.goals.find(goal => goal.id === "name-order").done, false);
+  assert.equal(guide.steps.find(step => step.id === "name-files").done, false);
+}
+
+for (const scenarioId of ["basic", "link-down", "dns-broken", "route-and-name"]) {
+  const state = createInitialState(scenarioId);
+  let guide = getExerciseGuide(state);
+  for (const step of guide.steps) {
+    for (const command of step.commands) run(state, command);
+  }
+
+  guide = getExerciseGuide(state);
+  assert.deepEqual(
+    guide.steps.map(step => [step.id, step.done]),
+    guide.steps.map(step => [step.id, true]),
+    `${scenarioId} guide commands should complete every guide step`
+  );
 }
 
 console.log("simulator tests passed");
