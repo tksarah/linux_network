@@ -107,39 +107,47 @@ const SCENARIOS = [
     ]
   },
   {
-    id: "link-down",
-    title: "演習1: connection未起動",
-    level: "初級",
-    description: "NICは管理対象ですが、connectionが未起動です。状態確認から起動までを行います。",
+    id: "ip-config",
+    title: "演習1: IP設定とリンクアップ",
+    level: "基礎",
+    description: "nmcliでLinux端末にIPアドレス、ゲートウェイ、DNSを設定し、connection upで通信できる状態にします。",
     guide: {
-      summary: "まず未接続であることを確認し、connectionを起動して、IPと経路が反映されたことを検証します。",
+      summary: "ケーブルは接続済みですが、IP設定がまだ入っていません。プロファイルにIPv4設定を保存し、ランタイムへ反映して疎通確認します。",
       steps: [
         {
-          id: "link-confirm-down",
+          id: "ip-config-confirm-empty",
           phase: "確認",
-          purpose: "NICとconnectionがまだ有効になっていないことを確認する",
-          commands: ["nmcli device status", "nmcli connection show --active"],
-          expected: "ens160 が disconnected、またはactive connection一覧に出ないことを見る",
+          purpose: "NICは見えているがIP設定とactive connectionがないことを確認する",
+          commands: ["nmcli device status", "nmcli connection show ens160", "ip addr"],
+          expected: "ens160 は disconnected、profileのIPv4項目は未設定で、ip addrにもIPv4アドレスが出ない",
           isDone: state =>
             hasObservation(state, "nmcli:device-status") &&
-            hasObservation(state, "nmcli:connection-show:active")
+            hasObservation(state, "nmcli:connection-show:ens160") &&
+            hasObservation(state, "ip:addr")
         },
         {
-          id: "link-activate",
-          phase: "設定反映",
-          purpose: "保存済みプロファイルをランタイムへ反映して接続を有効化する",
-          commands: ["nmcli connection up ens160"],
-          expected: "Connection successfully activated と表示され、IP/GW/DNSが反映される",
-          isDone: state => state.runtime.active
-        },
-        {
-          id: "link-verify",
-          phase: "検証",
-          purpose: "IPアドレス、経路、ゲートウェイ疎通を確認する",
-          commands: ["ip addr", "ip route", "ping 192.168.10.1"],
-          expected: "ens160にIPが付き、default routeが表示され、pingが0% packet lossになる",
+          id: "ip-config-modify-profile",
+          phase: "設定",
+          purpose: "connection profileにIPアドレス、GW、DNS、manual方式を設定する",
+          commands: [
+            "nmcli connection modify ens160 ipv4.addresses 192.168.10.50/24 ipv4.gateway 192.168.10.1 ipv4.dns 192.168.10.53 ipv4.method manual"
+          ],
+          expected: "プロファイルに address / gateway / dns / method が保存されるが、まだ通信には未反映",
           isDone: state =>
-            hasObservation(state, "ip:addr") &&
+            state.profile.address === LAB_ADDRESS &&
+            state.profile.gateway === GOOD_GATEWAY &&
+            state.profile.dns === DNS_SERVER &&
+            state.profile.method === "manual"
+        },
+        {
+          id: "ip-config-up-verify",
+          phase: "リンクアップ",
+          purpose: "保存したプロファイルを反映し、ゲートウェイまでの疎通を確認する",
+          commands: ["nmcli connection up ens160", "ip route", "ping 192.168.10.1"],
+          expected: "Connection successfully activated の後、default routeが出てpingが0% packet lossになる",
+          isDone: state =>
+            state.runtime.active &&
+            state.runtime.address === LAB_ADDRESS &&
             hasObservation(state, "ip:route") &&
             state.successes.has("ping:192.168.10.1")
         }
@@ -147,38 +155,120 @@ const SCENARIOS = [
     },
     start: {
       deviceState: "disconnected",
+      cablePlugged: true,
+      cableToggleable: false,
       profile: {
         method: "manual",
-        address: LAB_ADDRESS,
-        gateway: GOOD_GATEWAY,
-        dns: DNS_SERVER,
+        address: "",
+        gateway: "",
+        dns: "",
         autoconnect: false
       },
       runtimeMatchesProfile: false
     },
     goals: [
       {
-        id: "link-see",
-        text: "device statusとconnection showで未接続を確認",
+        id: "ip-config-empty",
+        text: "nmcliとip addrでIP未設定、connection未起動を確認",
         isDone: state =>
           hasObservation(state, "nmcli:device-status") &&
-          hasAnyObservation(state, ["nmcli:connection-show", "nmcli:connection-show:active", "nmcli:connection-show:ens160"])
+          hasObservation(state, "nmcli:connection-show:ens160") &&
+          hasObservation(state, "ip:addr")
       },
       {
-        id: "link-up",
-        text: "nmcli connection up ens160で接続を有効化",
-        isDone: state => state.runtime.active
+        id: "ip-config-profile",
+        text: "nmcli connection modifyでIP/GW/DNS/methodを設定",
+        isDone: state =>
+          state.profile.address === LAB_ADDRESS &&
+          state.profile.gateway === GOOD_GATEWAY &&
+          state.profile.dns === DNS_SERVER &&
+          state.profile.method === "manual"
+      },
+      {
+        id: "ip-config-online",
+        text: "nmcli connection up後、ping 192.168.10.1で疎通確認",
+        isDone: state => state.runtime.active && state.successes.has("ping:192.168.10.1")
+      }
+    ]
+  },
+  {
+    id: "link-down",
+    title: "初級: ケーブル未挿入",
+    level: "初級",
+    description: "Linux端末のRJ-45にネットワークケーブルが刺さっていません。物理リンク断を確認し、図上でケーブルを差し込んで復旧します。",
+    guide: {
+      summary: "プロファイル設定は正しいのに通信できません。nmcliとip linkでcarrierがないことを確認し、仮想ネットワーク図のトグルでケーブルを接続します。",
+      steps: [
+        {
+          id: "link-confirm-carrier",
+          phase: "確認",
+          purpose: "NICが物理リンクを検出できていないことを確認する",
+          commands: ["nmcli device status", "ip link", "nmcli connection show --active"],
+          expected: "ens160 が unavailable で、ip linkにはNO-CARRIERが表示され、active connection一覧に出ない",
+          isDone: state =>
+            hasObservation(state, "nmcli:device-status") &&
+            hasObservation(state, "ip:link") &&
+            hasObservation(state, "nmcli:connection-show:active")
+        },
+        {
+          id: "link-up-fails",
+          phase: "切り分け",
+          purpose: "設定反映だけでは物理リンク断を直せないことを確認する",
+          commands: ["nmcli connection up ens160"],
+          expected: "carrier off相当のエラーになり、プロファイル設定ではなくケーブル側の問題だと判断する",
+          isDone: state => state.failures.has("carrier")
+        },
+        {
+          id: "link-plug-cable",
+          phase: "復旧",
+          purpose: "右側の仮想ネットワーク図でRJ-45ケーブルを接続済みにして通信を確認する",
+          commands: ["ip link", "ip addr", "ip route", "ping 192.168.10.1"],
+          expected: "トグルを接続済みにするとens160がUP/LOWER_UPになり、default routeとping成功を確認できる",
+          isDone: state =>
+            state.device.cablePlugged &&
+            state.runtime.active &&
+            hasObservation(state, "ip:addr") &&
+            hasObservation(state, "ip:route") &&
+            state.successes.has("ping:192.168.10.1")
+        }
+      ]
+    },
+    start: {
+      deviceState: "unavailable",
+      cablePlugged: false,
+      cableToggleable: true,
+      profile: {
+        method: "manual",
+        address: LAB_ADDRESS,
+        gateway: GOOD_GATEWAY,
+        dns: DNS_SERVER,
+        autoconnect: true
+      },
+      runtimeMatchesProfile: false
+    },
+    goals: [
+      {
+        id: "link-see",
+        text: "device statusとip linkでRJ-45未挿入、NO-CARRIERを確認",
+        isDone: state =>
+          hasObservation(state, "nmcli:device-status") &&
+          hasObservation(state, "ip:link")
+      },
+      {
+        id: "link-carrier",
+        text: "nmcli connection up ens160ではcarrier offで復旧しないことを確認",
+        isDone: state => state.failures.has("carrier")
       },
       {
         id: "link-ping",
-        text: "ping 192.168.10.1でゲートウェイ到達を確認",
-        isDone: state => state.successes.has("ping:192.168.10.1")
+        text: "図上のトグルでケーブル接続後、ping 192.168.10.1でゲートウェイ到達を確認",
+        isDone: state => state.device.cablePlugged && state.runtime.active && state.successes.has("ping:192.168.10.1")
       }
     ]
   },
   {
     id: "dns-broken",
-    title: "演習2: DNS設定不良",
+    title: "中級: DNS設定不良",
     level: "中級",
     description: "IP通信は可能ですが、DNSサーバーの設定が誤っています。resolv.confとdigで切り分けます。",
     guide: {
@@ -251,7 +341,7 @@ const SCENARIOS = [
   },
   {
     id: "route-and-name",
-    title: "演習3: DNS正常時の経路切り分け",
+    title: "上級: DNS正常時の経路切り分け",
     level: "上級",
     description: "DNSは正常ですが、デフォルトゲートウェイが誤っているため外部サーバーに到達できません。",
     guide: {
@@ -345,7 +435,8 @@ export function listScenarios() {
 export function createInitialState(scenarioId = "basic") {
   const scenario = getScenario(scenarioId);
   const profile = { ...scenario.start.profile };
-  const runtime = scenario.start.runtimeMatchesProfile
+  const cablePlugged = scenario.start.cablePlugged ?? true;
+  const runtime = scenario.start.runtimeMatchesProfile && cablePlugged
     ? { ...profile, active: scenario.start.deviceState === "connected" }
     : { method: profile.method, address: "", gateway: "", dns: "", autoconnect: profile.autoconnect, active: false };
 
@@ -355,7 +446,9 @@ export function createInitialState(scenarioId = "basic") {
       name: "ens160",
       type: "ethernet",
       state: scenario.start.deviceState,
-      connection: scenario.start.deviceState === "connected" ? "ens160" : "--"
+      connection: runtime.active ? "ens160" : "--",
+      cablePlugged,
+      cableToggleable: scenario.start.cableToggleable ?? false
     },
     profile,
     runtime,
@@ -368,6 +461,25 @@ export function createInitialState(scenarioId = "basic") {
     failures: new Set(),
     lastMessage: ""
   };
+}
+
+export function setCablePlugged(state, plugged) {
+  if (!state.device.cableToggleable) return false;
+
+  state.device.cablePlugged = Boolean(plugged);
+  if (!state.device.cablePlugged) {
+    deactivateConnection(state, "unavailable");
+    markObservation(state, "cable:unplugged");
+    return true;
+  }
+
+  markObservation(state, "cable:plugged");
+  if (profileCanActivate(state)) {
+    activateConnection(state);
+  } else {
+    deactivateConnection(state, "disconnected");
+  }
+  return true;
 }
 
 export function getScenarioDetails(stateOrId) {
@@ -405,39 +517,46 @@ export function getExerciseGuide(stateOrId) {
 }
 
 export function getTopologyDetails(state) {
-  const active = state.runtime.active;
+  const cablePlugged = state.device.cablePlugged;
+  const active = networkReady(state);
   const dirty = !profileMatchesRuntime(state);
   const gatewayOk = active && state.runtime.gateway === GOOD_GATEWAY;
   const dnsOk = active && state.runtime.dns === DNS_SERVER;
-  const gatewayStatus = !active ? "down" : gatewayOk ? "ok" : "error";
-  const dnsStatus = !active ? "down" : dnsOk ? "ok" : "error";
-  const endpointStatus = !active ? "down" : gatewayOk ? "ok" : "error";
-  const publicDnsStatus = !active ? "down" : gatewayOk ? "ok" : "down";
-  const linuxStatus = !active ? "down" : dirty ? "pending" : "ok";
+  const linkDownStatus = cablePlugged ? "down" : "error";
+  const gatewayStatus = !active ? linkDownStatus : gatewayOk ? "ok" : "error";
+  const dnsStatus = !active ? linkDownStatus : dnsOk ? "ok" : "error";
+  const endpointStatus = !active ? linkDownStatus : gatewayOk ? "ok" : "error";
+  const publicDnsStatus = !active ? linkDownStatus : gatewayOk ? "ok" : "down";
+  const linuxStatus = !cablePlugged ? "error" : !active ? "down" : dirty ? "pending" : "ok";
 
   return {
-    overallStatus: !active ? "down" : !gatewayOk || !dnsOk ? "attention" : dirty ? "pending" : "ok",
-    summary: topologySummary({ active, dirty, gatewayOk, dnsOk }),
+    overallStatus: !cablePlugged ? "attention" : !active ? "down" : !gatewayOk || !dnsOk ? "attention" : dirty ? "pending" : "ok",
+    summary: topologySummary({ active, dirty, gatewayOk, dnsOk, cablePlugged }),
     nodes: [
       {
         id: "linux",
         title: "Linux端末",
         detail: `${state.hostname} / ${state.device.name}`,
         metric: active ? state.runtime.address : state.profile.address || "IP未設定",
-        note: active ? "現在の通信に使う端末" : "connection upで通信を開始",
+        note: !cablePlugged ? "RJ-45にケーブルが刺さっていません" : active ? "現在の通信に使う端末" : "connection upで通信を開始",
         icon: TOPOLOGY_ICONS.linux,
         status: linuxStatus,
-        statusLabel: statusLabel(linuxStatus)
+        statusLabel: statusLabel(linuxStatus),
+        cable: {
+          plugged: cablePlugged,
+          toggleable: state.device.cableToggleable,
+          label: `RJ-45: ${cablePlugged ? "接続済み" : "未挿入"}`
+        }
       },
       {
         id: "switch",
         title: "スイッチ",
         detail: "同一LAN",
         metric: "192.168.10.0/24",
-        note: active ? "LAN内の中継点" : "端末側の接続待ち",
+        note: active ? "LAN内の中継点" : cablePlugged ? "端末側のconnection起動待ち" : "端末側のケーブル接続待ち",
         icon: TOPOLOGY_ICONS.switch,
-        status: active ? "ok" : "down",
-        statusLabel: statusLabel(active ? "ok" : "down")
+        status: active ? "ok" : linkDownStatus,
+        statusLabel: statusLabel(active ? "ok" : linkDownStatus)
       },
       {
         id: "gateway",
@@ -485,8 +604,14 @@ export function getTopologyDetails(state) {
         id: "linux-switch",
         from: "linux",
         to: "switch",
-        label: active ? "ens160 active" : "connection未起動",
-        status: active ? "ok" : "down"
+        label: !cablePlugged ? "RJ-45未挿入" : active ? "ens160 active" : "connection未起動",
+        status: !cablePlugged ? "error" : active ? "ok" : "down",
+        toggle: state.device.cableToggleable ? {
+          enabled: state.device.cableToggleable,
+          plugged: cablePlugged,
+          onLabel: "ケーブル接続済み",
+          offLabel: "ケーブル未挿入"
+        } : null
       },
       {
         id: "switch-gateway",
@@ -517,18 +642,19 @@ export function getTopologyDetails(state) {
         status: publicDnsStatus
       }
     ],
-    notes: topologyNotes({ active, dirty, gatewayOk, dnsOk })
+    notes: topologyNotes({ active, dirty, gatewayOk, dnsOk, cablePlugged })
   };
 }
 
 export function getStateSummary(state) {
   return [
     ["Device", `${state.device.name} (${state.device.state})`],
+    ["RJ-45", state.device.cablePlugged ? "接続済み" : "未挿入"],
     ["Profile IP", state.profile.address || "未設定"],
     ["Active IP", state.runtime.address || "未反映"],
     ["Gateway", state.runtime.gateway || "未反映"],
     ["Local DNS", state.runtime.dns || "未反映"],
-    ["反映状態", profileMatchesRuntime(state) ? "profile = runtime" : "connection upが必要"]
+    ["反映状態", state.device.cablePlugged ? profileMatchesRuntime(state) ? "profile = runtime" : "connection upが必要" : "ケーブル接続が必要"]
   ];
 }
 
@@ -581,7 +707,8 @@ export function runCommand(state, input) {
   }
 }
 
-function topologySummary({ active, dirty, gatewayOk, dnsOk }) {
+function topologySummary({ active, dirty, gatewayOk, dnsOk, cablePlugged }) {
+  if (!cablePlugged) return "Linux端末のRJ-45にケーブルが刺さっていません。仮想ネットワーク図のトグルでケーブルを接続します。";
   if (!active) return "端末のconnectionが未起動です。nmcli connection up ens160で通信状態へ反映します。";
   if (!dnsOk) return "IP通信はできますが、ローカルDNSサーバーの参照先が誤っています。ipv4.dnsを確認します。";
   if (!gatewayOk) return "LAN内は見えますが、default gatewayが誤っているため外部宛先へ出られません。";
@@ -589,9 +716,12 @@ function topologySummary({ active, dirty, gatewayOk, dnsOk }) {
   return "端末、LAN、GW、ローカルDNS、外部宛先までの基本経路が成立しています。";
 }
 
-function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
+function topologyNotes({ active, dirty, gatewayOk, dnsOk, cablePlugged }) {
   const notes = [];
-  if (!active) {
+  if (!cablePlugged) {
+    notes.push("nmcli device status と ip link で unavailable / NO-CARRIER を確認し、ケーブル未挿入を切り分けます。");
+  }
+  if (cablePlugged && !active) {
     notes.push("nmcli device status と nmcli connection show --active で未起動を確認します。");
   }
   if (active && !dnsOk) {
@@ -600,7 +730,7 @@ function topologyNotes({ active, dirty, gatewayOk, dnsOk }) {
   if (active && !gatewayOk) {
     notes.push("ip route または netstat -rn で default gateway の値を確認します。");
   }
-  if (dirty) {
+  if (cablePlugged && dirty) {
     notes.push("nmcli connection modify はプロファイル変更です。通信へ反映するには connection up が必要です。");
   }
   if (notes.length === 0) {
@@ -712,7 +842,7 @@ function nmcliDeviceStatus(state) {
   markObservation(state, "nmcli:device-status");
   return [
     "DEVICE  TYPE      STATE         CONNECTION",
-    `${pad(state.device.name, 7)} ${pad(state.device.type, 9)} ${pad(state.device.state, 13)} ${state.runtime.active ? "ens160" : "--"}`
+    `${pad(state.device.name, 7)} ${pad(state.device.type, 9)} ${pad(state.device.state, 13)} ${networkReady(state) ? "ens160" : "--"}`
   ].join("\n") + "\n";
 }
 
@@ -720,7 +850,7 @@ function nmcliConnectionShow(state, args) {
   if (args[0] === "--active") {
     markObservation(state, "nmcli:connection-show");
     markObservation(state, "nmcli:connection-show:active");
-    if (!state.runtime.active) return "NAME  UUID  TYPE  DEVICE\n";
+    if (!networkReady(state)) return "NAME  UUID  TYPE  DEVICE\n";
     return [
       "NAME    UUID                                  TYPE      DEVICE",
       "ens160  9c6b8fd8-8d6d-4d35-a8ab-10a5f7f0e160  ethernet  ens160"
@@ -747,7 +877,7 @@ function nmcliConnectionShow(state, args) {
   markObservation(state, "nmcli:connection-show");
   return [
     "NAME    UUID                                  TYPE      DEVICE",
-    `ens160  9c6b8fd8-8d6d-4d35-a8ab-10a5f7f0e160  ethernet  ${state.runtime.active ? "ens160" : "--"}`
+    `ens160  9c6b8fd8-8d6d-4d35-a8ab-10a5f7f0e160  ethernet  ${networkReady(state) ? "ens160" : "--"}`
   ].join("\n") + "\n";
 }
 
@@ -794,14 +924,20 @@ function nmcliConnectionUp(state, args) {
   const connectionId = args[0];
   if (!connectionId) return "Error: usage: nmcli connection up ens160\n";
   if (connectionId !== "ens160") return `Error: unknown connection '${connectionId}'\n`;
+  markObservation(state, "nmcli:connection-up:ens160");
   if (state.profile.method !== "manual" && state.profile.method !== "auto") {
     return `Error: unsupported ipv4.method '${state.profile.method}'\n`;
   }
+  if (!state.device.cablePlugged) {
+    state.failures.add("carrier");
+    return "Error: Connection activation failed: No suitable device found for this connection (device ens160 not available because carrier is off)\n";
+  }
+  if (!profileCanActivate(state)) {
+    state.failures.add("profile");
+    return "Error: Connection activation failed: ipv4.addresses is required when ipv4.method is manual\n";
+  }
 
-  state.runtime = { ...state.profile, active: true };
-  state.device.state = "connected";
-  state.device.connection = "ens160";
-  markObservation(state, "nmcli:connection-up:ens160");
+  activateConnection(state);
   return [
     "Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/7)",
     `反映: IP=${state.runtime.address || "DHCP想定"} GW=${state.runtime.gateway || "--"} DNS=${state.runtime.dns || "--"}`
@@ -820,26 +956,31 @@ function ipCommand(state, args) {
   }
   if (args[0] === "link") {
     markObservation(state, "ip:link");
+    const flags = interfaceFlags(state);
+    const linkState = interfaceState(state);
     return [
       "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN mode DEFAULT group default qlen 1000",
-      `2: ens160: <BROADCAST,MULTICAST,${state.runtime.active ? "UP,LOWER_UP" : "DOWN"}> mtu 1500 state ${state.runtime.active ? "UP" : "DOWN"} mode DEFAULT group default qlen 1000`
+      `2: ens160: <${flags}> mtu 1500 state ${linkState} mode DEFAULT group default qlen 1000`
     ].join("\n") + "\n";
   }
   return `ip: unsupported arguments '${args.join(" ")}'\n`;
 }
 
 function ipAddr(state) {
-  const inet = state.runtime.active && state.runtime.address ? `    inet ${state.runtime.address} brd 192.168.10.255 scope global noprefixroute ens160\n` : "";
+  const active = networkReady(state);
+  const inet = active && state.runtime.address ? `    inet ${state.runtime.address} brd 192.168.10.255 scope global noprefixroute ens160\n` : "";
+  const flags = interfaceFlags(state);
+  const linkState = interfaceState(state);
   return [
     "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000",
     "    inet 127.0.0.1/8 scope host lo",
-    `2: ens160: <BROADCAST,MULTICAST,${state.runtime.active ? "UP,LOWER_UP" : "DOWN"}> mtu 1500 qdisc fq_codel state ${state.runtime.active ? "UP" : "DOWN"} group default qlen 1000`,
+    `2: ens160: <${flags}> mtu 1500 qdisc fq_codel state ${linkState} group default qlen 1000`,
     inet.trimEnd()
   ].filter(Boolean).join("\n") + "\n";
 }
 
 function ipRoute(state) {
-  if (!state.runtime.active || !state.runtime.address) return "";
+  if (!networkReady(state) || !state.runtime.address) return "";
   const lines = [];
   if (state.runtime.gateway) lines.push(`default via ${state.runtime.gateway} dev ens160 proto static metric 100`);
   lines.push("192.168.10.0/24 dev ens160 proto kernel scope link src 192.168.10.50 metric 100");
@@ -850,6 +991,10 @@ function pingCommand(state, args) {
   const target = args.find(arg => !arg.startsWith("-"));
   if (!target) return "ping: usage error: Destination address required\n";
   markObservation(state, `ping:${target}`);
+  if (!networkReady(state)) {
+    state.failures.add(state.device.cablePlugged ? "ping" : "carrier");
+    return "ping: connect: Network is unreachable\n";
+  }
 
   const resolution = resolveForPing(state, target);
   if (!resolution.ok) {
@@ -971,7 +1116,7 @@ function resolveForPing(state, target) {
 }
 
 function resolveDnsOnly(state, target) {
-  if (!state.runtime.active || !state.runtime.dns || state.runtime.dns !== DNS_SERVER) {
+  if (!networkReady(state) || !state.runtime.dns || state.runtime.dns !== DNS_SERVER) {
     return { ok: false };
   }
   const ip = DNS_RECORDS[target];
@@ -979,7 +1124,7 @@ function resolveDnsOnly(state, target) {
 }
 
 function routeTo(state, ip) {
-  if (!state.runtime.active || !state.runtime.address) return { ok: false };
+  if (!networkReady(state) || !state.runtime.address) return { ok: false };
   if (ip.startsWith("192.168.10.")) return { ok: true };
   return { ok: state.runtime.gateway === GOOD_GATEWAY };
 }
@@ -1005,7 +1150,7 @@ function buildNmConnection(state) {
 }
 
 function buildResolvConf(state) {
-  if (!state.runtime.active || !state.runtime.dns) {
+  if (!networkReady(state) || !state.runtime.dns) {
     return "# Generated by NetworkManager\n# connection is not active; no DNS server is currently applied\n";
   }
   return [
@@ -1032,11 +1177,49 @@ function buildHosts(state) {
 }
 
 function profileMatchesRuntime(state) {
-  return state.runtime.active &&
+  return networkReady(state) &&
     state.profile.address === state.runtime.address &&
     state.profile.gateway === state.runtime.gateway &&
     state.profile.dns === state.runtime.dns &&
     state.profile.method === state.runtime.method;
+}
+
+function networkReady(state) {
+  return state.device.cablePlugged && state.runtime.active;
+}
+
+function profileCanActivate(state) {
+  return state.profile.method !== "manual" || Boolean(state.profile.address);
+}
+
+function activateConnection(state) {
+  state.runtime = { ...state.profile, active: true };
+  state.device.state = "connected";
+  state.device.connection = "ens160";
+}
+
+function deactivateConnection(state, deviceState = "disconnected") {
+  state.runtime = {
+    method: state.profile.method,
+    address: "",
+    gateway: "",
+    dns: "",
+    autoconnect: state.profile.autoconnect,
+    active: false
+  };
+  state.device.state = deviceState;
+  state.device.connection = "--";
+}
+
+function interfaceFlags(state) {
+  if (!state.device.cablePlugged) return "NO-CARRIER,BROADCAST,MULTICAST,DOWN";
+  if (networkReady(state)) return "BROADCAST,MULTICAST,UP,LOWER_UP";
+  return "BROADCAST,MULTICAST,DOWN";
+}
+
+function interfaceState(state) {
+  if (!state.device.cablePlugged) return "DOWN";
+  return networkReady(state) ? "UP" : "DOWN";
 }
 
 function isIPv4(value) {

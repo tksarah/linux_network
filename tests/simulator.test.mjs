@@ -5,6 +5,8 @@ import {
   getScenarioDetails,
   getTopologyDetails,
   getVirtualFiles,
+  listScenarios,
+  setCablePlugged,
   runCommand
 } from "../assets/simulator.js";
 
@@ -21,9 +23,38 @@ function run(state, command) {
 }
 
 {
+  const state = createInitialState("ip-config");
+  assert.match(run(state, "nmcli device status"), /ens160\s+ethernet\s+disconnected/);
+  assert.equal(run(state, "ip route"), "");
+  assert.match(run(state, "nmcli connection up ens160"), /ipv4\.addresses is required/);
+  assert.match(
+    run(state, "nmcli connection modify ens160 ipv4.addresses 192.168.10.50/24 ipv4.gateway 192.168.10.1 ipv4.dns 192.168.10.53 ipv4.method manual"),
+    /successfully modified/
+  );
+  assert.match(getVirtualFiles(state)["/etc/NetworkManager/system-connections/ens160.nmconnection"], /address1=192\.168\.10\.50\/24,192\.168\.10\.1/);
+  assert.match(run(state, "nmcli connection up ens160"), /IP=192\.168\.10\.50\/24/);
+  assert.match(run(state, "ping 192.168.10.1"), /0% packet loss/);
+}
+
+{
   const state = createInitialState("link-down");
+  assert.equal(state.device.cablePlugged, false);
+  assert.match(run(state, "nmcli device status"), /ens160\s+ethernet\s+unavailable/);
+  assert.match(run(state, "ip link"), /NO-CARRIER/);
+  assert.equal(run(state, "ip route"), "");
+  assert.match(run(state, "ping 192.168.10.1"), /Network is unreachable/);
+  assert.match(run(state, "nmcli connection up ens160"), /carrier is off/);
+  assert.equal(setCablePlugged(state, true), true);
+  assert.equal(state.device.cablePlugged, true);
+  assert.match(run(state, "ip link"), /UP,LOWER_UP/);
+  assert.match(run(state, "ping 192.168.10.1"), /0% packet loss/);
+}
+
+{
+  const state = createInitialState("ip-config");
   assert.match(run(state, "nmcli device status"), /disconnected/);
   assert.equal(run(state, "ip route"), "");
+  assert.match(run(state, "nmcli connection modify ens160 ipv4.addresses 192.168.10.50/24 ipv4.gateway 192.168.10.1 ipv4.dns 192.168.10.53 ipv4.method manual"), /successfully modified/);
   assert.match(run(state, "nmcli connection up ens160"), /successfully activated/);
   assert.match(run(state, "ping 192.168.10.1"), /0% packet loss/);
 }
@@ -72,8 +103,10 @@ function run(state, command) {
 {
   const state = createInitialState("link-down");
   const topology = getTopologyDetails(state);
-  assert.equal(topology.overallStatus, "down");
-  assert.equal(topology.links.find(link => link.id === "linux-switch").status, "down");
+  assert.equal(topology.overallStatus, "attention");
+  assert.equal(topology.nodes.find(node => node.id === "linux").cable.plugged, false);
+  assert.equal(topology.links.find(link => link.id === "linux-switch").status, "error");
+  assert.equal(topology.links.find(link => link.id === "linux-switch").toggle.enabled, true);
 }
 
 {
@@ -141,10 +174,26 @@ function run(state, command) {
   assert.equal(guide.steps.find(step => step.id === "external-route-fail").done, false);
 }
 
-for (const scenarioId of ["basic", "link-down", "dns-broken", "route-and-name"]) {
+{
+  assert.deepEqual(
+    listScenarios().map(scenario => [scenario.id, scenario.level]),
+    [
+      ["basic", "導入"],
+      ["ip-config", "基礎"],
+      ["link-down", "初級"],
+      ["dns-broken", "中級"],
+      ["route-and-name", "上級"]
+    ]
+  );
+}
+
+for (const scenarioId of ["basic", "ip-config", "link-down", "dns-broken", "route-and-name"]) {
   const state = createInitialState(scenarioId);
   let guide = getExerciseGuide(state);
   for (const step of guide.steps) {
+    if (scenarioId === "link-down" && step.id === "link-plug-cable") {
+      setCablePlugged(state, true);
+    }
     for (const command of step.commands) run(state, command);
   }
 

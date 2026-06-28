@@ -7,7 +7,8 @@ import {
   getTopologyDetails,
   getVirtualFiles,
   listScenarios,
-  runCommand
+  runCommand,
+  setCablePlugged
 } from "./simulator.js";
 
 const SCENARIO_KEY = "linux-network-lab-scenario";
@@ -48,6 +49,7 @@ const chips = [
   "nmcli connection show",
   "nmcli connection show --active",
   "nmcli connection show ens160",
+  "nmcli connection modify ens160 ipv4.addresses 192.168.10.50/24 ipv4.gateway 192.168.10.1 ipv4.dns 192.168.10.53 ipv4.method manual",
   "cat /etc/NetworkManager/system-connections/ens160.nmconnection",
   "cat /etc/resolv.conf",
   "cat /etc/nsswitch.conf",
@@ -371,7 +373,14 @@ function createTopologyNode(node) {
   const note = document.createElement("p");
   note.textContent = node.note;
 
-  body.append(label, detail, metric, note);
+  body.append(label, detail, metric);
+  if (node.cable) {
+    const cable = document.createElement("span");
+    cable.className = node.cable.plugged ? "topology-cable-badge plugged" : "topology-cable-badge unplugged";
+    cable.textContent = node.cable.label;
+    body.appendChild(cable);
+  }
+  body.appendChild(note);
   item.append(image, body);
   return item;
 }
@@ -393,7 +402,44 @@ function createTopologyLink(link, className) {
   label.textContent = link.label;
 
   item.append(line, label);
+  if (link.toggle) {
+    item.appendChild(createCableToggle(link.toggle));
+  }
   return item;
+}
+
+function createCableToggle(toggle) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = toggle.plugged ? "cable-toggle plugged" : "cable-toggle unplugged";
+  button.setAttribute("role", "switch");
+  button.setAttribute("aria-checked", String(toggle.plugged));
+  button.disabled = !toggle.enabled;
+  button.title = toggle.enabled ? "RJ-45ケーブルの挿抜を切り替えます" : "この演習ではケーブル状態を変更できません";
+  button.setAttribute("aria-label", toggle.plugged ? toggle.onLabel : toggle.offLabel);
+
+  const track = document.createElement("span");
+  track.className = "cable-toggle-track";
+  track.setAttribute("aria-hidden", "true");
+
+  const text = document.createElement("span");
+  text.className = "cable-toggle-text";
+  text.textContent = toggle.plugged ? "接続済み" : "未挿入";
+
+  button.append(track, text);
+  button.addEventListener("click", () => {
+    if (!toggle.enabled) return;
+    const changed = setCablePlugged(state, !toggle.plugged);
+    if (changed) {
+      appendOutput(state.device.cablePlugged
+        ? "RJ-45ケーブルを接続しました。NetworkManagerが保存済みプロファイルを反映しました。\n"
+        : "RJ-45ケーブルを抜きました。物理リンクがDOWNになりました。\n");
+      renderAll();
+      focusTerminalInput();
+    }
+  });
+
+  return button;
 }
 
 function renderStateSummary() {

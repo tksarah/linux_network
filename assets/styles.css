@@ -619,9 +619,9 @@ body[data-terminal-mode="minimized"] .terminal-hint {
 .topology-grid {
   display: grid;
   grid-template-columns:
-    minmax(132px, 1fr) minmax(54px, 0.42fr)
-    minmax(132px, 1fr) minmax(54px, 0.42fr)
-    minmax(132px, 1fr) minmax(54px, 0.42fr)
+    minmax(132px, 1fr) minmax(86px, 0.44fr)
+    minmax(132px, 1fr) minmax(86px, 0.44fr)
+    minmax(132px, 1fr) minmax(86px, 0.44fr)
     minmax(132px, 1fr);
   grid-template-rows: auto minmax(34px, auto) auto;
   gap: 8px 10px;
@@ -698,6 +698,30 @@ body[data-terminal-mode="minimized"] .terminal-hint {
   color: var(--muted);
   line-height: 1.4;
   font-size: 0.78rem;
+}
+
+.topology-cable-badge {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.topology-cable-badge.plugged {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.topology-cable-badge.unplugged {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fecaca;
 }
 
 .topology-node.status-ok {
@@ -777,6 +801,7 @@ body[data-terminal-mode="minimized"] .terminal-hint {
   align-items: center;
   justify-items: center;
   min-width: 0;
+  min-height: 62px;
 }
 
 .topology-line {
@@ -795,6 +820,68 @@ body[data-terminal-mode="minimized"] .terminal-hint {
   line-height: 1.25;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+.cable-toggle {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-width: 118px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 4px 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.cable-toggle:disabled {
+  opacity: 0.72;
+}
+
+.cable-toggle-track {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--down);
+}
+
+.cable-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 140ms ease;
+}
+
+.cable-toggle.plugged .cable-toggle-track {
+  background: var(--ok);
+}
+
+.cable-toggle.plugged .cable-toggle-track::after {
+  transform: translateX(18px);
+}
+
+.cable-toggle.unplugged {
+  border-color: rgba(185, 28, 28, 0.28);
+}
+
+.cable-toggle-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+  text-align: left;
 }
 
 .topology-link.status-error .topology-line {
